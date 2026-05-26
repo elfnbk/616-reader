@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Autonomy with and without &mdash; 3D Reader Graph</title>
+<style>
+  :root{ --line:#2a2a2e; --text:#e8e8ea; --muted:#8a8a92; --panel:#0e0e10ee;
+    --core:#f5f5f5; --t1:#f4d03f; --t2:#2f80ed; --t3:#27ae60; }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;color:var(--text);
+    background:radial-gradient(1200px 1000px at 50% 45%, #0a0a0c 0%, #000 72%);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+  canvas{display:block;cursor:grab;touch-action:none} canvas.grab{cursor:grabbing}
+  #top{position:fixed;top:14px;left:16px;right:16px;display:flex;gap:12px;align-items:flex-start;z-index:5;pointer-events:none}
+  #title h1{font-size:18px;font-weight:700;margin:0;letter-spacing:.2px;color:#ffffff;max-width:440px;line-height:1.28}
+  #title p{margin:5px 0 0;font-size:12px;color:var(--muted);letter-spacing:.3px}
+  #tools{margin-left:auto;display:flex;gap:8px;pointer-events:auto}
+  #search{background:#241115;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;width:190px;outline:none}
+  #search:focus{border-color:var(--t1)}
+  .btn{background:#241115;border:1px solid var(--line);color:var(--muted);border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer}
+  .btn:hover{color:var(--text);border-color:#7a4148}
+  #legend{position:fixed;left:16px;bottom:16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:11.5px;z-index:5;backdrop-filter:blur(6px)}
+  #legend .row{display:flex;align-items:center;gap:8px;margin:3px 0}
+  #legend .row[data-leg]{cursor:pointer;border-radius:6px;padding:2px 5px;margin:1px -3px}
+  #legend .row[data-leg]:hover{background:rgba(255,255,255,0.06)}
+  .dot{width:11px;height:11px;border-radius:50%}
+  #panel{position:fixed;top:64px;right:16px;width:330px;max-height:calc(100% - 96px);overflow:auto;background:var(--panel);
+    border:1px solid var(--line);border-radius:12px;padding:16px;z-index:6;backdrop-filter:blur(8px);box-shadow:0 18px 50px #000a;display:none}
+  #panel.show{display:block}
+  #panel .tag{display:inline-block;font-size:10px;letter-spacing:.6px;text-transform:uppercase;padding:3px 8px;border-radius:20px;margin-bottom:8px}
+  #panel h2{font-size:15px;margin:2px 0 8px;line-height:1.3}
+  #panel .desc,#panel .cite{font-size:12.5px;line-height:1.55;color:#e7cdcd;white-space:pre-wrap}
+  #panel h3{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:16px 0 6px}
+  #panel .links a{display:block;font-size:12px;color:#ecd6d6;text-decoration:none;padding:5px 8px;border-radius:7px;border:1px solid transparent;cursor:pointer}
+  #panel .links a:hover{background:#ffffff10;border-color:var(--line)}
+  #panel .links a .lc{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px;vertical-align:middle}
+  #close{position:absolute;top:10px;right:12px;color:var(--muted);cursor:pointer;font-size:18px;line-height:1}
+  #close:hover{color:#fff}
+  #hint{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--muted);z-index:5;text-align:center}
+  #assistant{position:fixed;left:16px;top:120px;width:344px;max-height:calc(100% - 320px);overflow:auto;
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 14px 16px;z-index:6;backdrop-filter:blur(8px);box-shadow:0 18px 50px #000a;display:none}
+  #assistant.show{display:block}
+  #assistant .head{display:flex;align-items:center;gap:7px;margin-bottom:9px}
+  #assistant .ai{font-size:10.5px;color:#9aa;letter-spacing:.6px;text-transform:uppercase}
+  #a-close{margin-left:auto;cursor:pointer;color:var(--muted);font-size:16px}
+  #a-close:hover{color:#fff}
+  #assistant .q{font-size:12px;color:var(--muted);margin-bottom:9px}
+  #assistant .q b{color:#fff;font-weight:600}
+  #assistant .ans{font-size:12.5px;line-height:1.55;color:#e7e7ea;white-space:pre-wrap}
+  #assistant .chips{margin-top:12px;display:flex;flex-wrap:wrap;gap:6px}
+  #assistant .chip{font-size:11px;border:1px solid var(--line);border-radius:20px;padding:4px 9px;cursor:pointer;color:#cfcfd6}
+  #assistant .chip:hover{border-color:#666;color:#fff}
+  #assistant .chip .lc{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:middle}
+  #cube{position:fixed;right:16px;bottom:16px;width:84px;height:84px;z-index:7}
+  #cube canvas{width:84px;height:84px;cursor:pointer;display:block;touch-action:none}
+  #timeline{position:fixed;right:108px;bottom:14px;height:88px;z-index:6}
+  #timeline svg{display:block}
+  #timeline .hit{cursor:pointer}
+  #timeline .hl{opacity:0;transition:opacity .15s}
+  #timeline .bandg:hover .hl{opacity:.12}
+  #timeline .bandg.sel .hl{opacity:.2}
+</style></head>
+<body>
+<canvas id="cv"></canvas>
+<div id="top">
+  <div id="title"><h1>Autonomy With and Without: Architecture, Postcolonial Critique and Planetary Urbanization</h1>
+  <p>ARCH616 Reader | Elif Bek</p></div>
+  <div id="tools"><input id="search" placeholder="Ask the reader: a theme, a source, a relation..."><div class="btn" id="period">Period</div><div class="btn" id="reset">Reset</div></div>
+</div>
+<div id="legend">
+  <div class="row" data-leg="core"><span class="dot" style="background:var(--core)"></span> Center</div>
+  <div class="row" data-leg="t1"><span class="dot" style="background:var(--t1)"></span> T1 Autonomy</div>
+  <div class="row" data-leg="t2"><span class="dot" style="background:var(--t2)"></span> T2 Postcolonial Critique</div>
+  <div class="row" data-leg="t3"><span class="dot" style="background:var(--t3)"></span> T3 Planetary Urbanization</div>
+  <div class="row" data-leg="period"><span style="display:inline-block;width:14px;height:2px;background:#c6a0ff;border-radius:2px"></span> 10 yearly period</div>
+</div>
+<div id="panel">
+  <div id="close">&times;</div>
+  <div id="p-tag" class="tag"></div><h2 id="p-title"></h2>
+  <div id="p-body"></div>
+  <div id="p-links-wrap"><h3 id="p-links-h">Connected</h3><div id="p-links" class="links"></div></div>
+</div>
+<div id="assistant">
+  <div class="head"><span class="ai">&#9672; Reader assistant</span><span id="a-close">&times;</span></div>
+  <div class="q" id="a-q"></div>
+  <div class="ans" id="a-ans"></div>
+  <div class="chips" id="a-chips"></div>
+</div>
+<div id="timeline"></div>
+<div id="cube"><canvas id="mini" width="84" height="84"></canvas></div>
+<div id="hint">drag to orbit &middot; scroll to zoom &middot; click a node &middot; click cube for view</div>
+
+<script>
+const DATA={"nodes": [{"id": "hub", "type": "hub", "group": "core", "label": "", "title": "Autonomy with and without: Architecture, Postcolonial Critique, and Planetary Urbanization", "desc": "As introduction: The reader opens with the methodological frame that governs it. Following Goldhagen's proposal that modernism in architecture be read not as a stable style or paradigm but 'as a discourse', the reader treats 'autonomy' as a category whose conditions of production are themselves part of what must be thought. Each theme asks how a concept (autonomy, the postcolonial perspective, planetary urbanization) is produced within a discourse rather than given in advance.\n\nAs conclusion: The reader closes by retaining the term 'autonomy' while redescribing it in two registers at once: as a situated category produced within Euro-American architectural theory (returning to Akcan's framework of translation and Avermaete and Sabatino's global turn), and as a category that planetary urbanization renders inseparable from the political and material geographies in which architecture is practised, set in dialogue with Chakrabarty's planetary horizon. Goldhagen's move of retaining a term by redescribing it 'as a discourse' provides the analogue: autonomy is kept as a coherent term whose extension remains open to renewed interrogation, with and without its outside."}, {"id": "t1", "group": "t1", "label": "T1 - AUTONOMY", "title": "T1 - Autonomy: Producing the Disciplinary Category", "desc": "Traces the production of the autonomy debate within architectural theory, from Tafuri through the expanded field of the 1970s-1990s.", "type": "theme"}, {"id": "t2", "group": "t2", "label": "T2 - POSTCOLONIAL CRITIQUE", "title": "T2 - Postcolonial Critique: Situating Autonomy", "desc": "Confronts the production of autonomy with the postcolonial critique of universal theoretical categories and its transposition into architectural historiography and urban studies.", "type": "theme"}, {"id": "t3", "group": "t3", "label": "T3 - PLANETARY URBANIZATION", "title": "T3 - Planetary Urbanization: Autonomy without an Outside", "desc": "Asks how the planetary urbanization thesis, by removing the urban's constitutive outside, reopens the autonomy question to renewed interrogation.", "type": "theme"}, {"id": "t1_1", "theme": "t1", "group": "t1", "label": "T1.1 Disciplinary Project", "title": "T1.1 - Autonomy as a Disciplinary Project", "desc": "The architectural discourse on autonomy takes its most consequential form in Tafuri's reading of architecture as caught within and against the logic of capitalist development, where the claim to autonomy is qualified by the recognition that the discipline cannot stand outside the relations of production in which it is formed. Aureli later recovers this position, framing autonomy not as a withdrawal from politics but as a politically formed practice within and against capitalism.", "type": "sub"}, {"id": "t1_2", "theme": "t1", "group": "t1", "label": "T1.2 Expanded Field", "title": "T1.2 - The Expanded Field and the Socio-Critical Inheritance", "desc": "Kipnis reframes autonomy in relation to formal complexity, while Agrest's inverse position brings the city, as the field of non-design, into the disciplinary project. Goldhagen marks that the architectural use of autonomy is a different lineage, formed under Tafuri and Adorno, that envisages autonomy as a socio-critical stance; Hays gives this its sharpest formulation as critical distance, rendering 'autonomy' locatable and so available to the postcolonial interrogation that follows.", "type": "sub"}, {"id": "t2_1", "theme": "t2", "group": "t2", "label": "T2.1 Foundations & Transposition", "title": "T2.1 - Foundations and Architectural Transposition", "desc": "Read through the postcolonial perspective of Said, Spivak, Bhabha, Fanon, and Chakrabarty, the institutional location of architectural theory is a constitutive condition: the categories Western* thought presents as universal are products of specific positions. Transposed into architecture by Akcan, Bozdogan, and the practice of Garcia and Frankowski, the critique shows that autonomy carries the same universalising assumption criticised at the level of style and modernism.", "note": "* 'Western': the term is used by Edward Said (Orientalism, 1978).", "type": "sub"}, {"id": "t2_2", "theme": "t2", "group": "t2", "label": "T2.2 Urban Counterpart", "title": "T2.2 - The Urban Counterpart: Global South, Global City, and Worlding", "desc": "Avermaete's global histories reverse the diffusionist narrative by reading post-war cities as parallel laboratories of modernization. Robinson, Roy, Myers, and Bhan show that dominant theorisations of the urban, rooted in the Euro-American* experience, cannot register forms of urban modernity they were not built to account for; Sassen's Global City and the worlding-assemblage methodologies of McCann, Ward, and McFarlane mark the contested positions through which this argument is organised.", "note": "* 'Euro-American': the term is used in Edward Said, Gayatri Spivak and Ash Amin's works.", "type": "sub"}, {"id": "t3_1", "theme": "t3", "group": "t3", "label": "T3.1 Theory Without an Outside", "title": "T3.1 - Urban Theory Without an Outside", "desc": "Brenner and Schmid's planetary urbanization thesis removes the constitutive outside, since under planetary urbanization the urban is a process that produces no exteriority. Brenner's reply to postcolonial, feminist, and queer critics (engaged pluralism), with Schmid's decentring and Goonewardena's totality-theoretical reading, sets the terrain on which the postcolonial and planetary frames speak with rather than against one another.", "type": "sub"}, {"id": "t3_2", "theme": "t3", "group": "t3", "label": "T3.2 Lived Urban Condition", "title": "T3.2 - The Lived Urban Condition and the Systemic Edge", "desc": "Read alongside Harvey, Sassen, Koolhaas, and Soja, the planetary thesis reopens autonomy as a question of situatedness* rather than withdrawal, and of the architect's position within an urban condition with no exterior, including Sassen's account of expulsions at the systemic edge, where any claim to an autonomous position becomes difficult to distinguish from the condition it sought to hold at a distance.", "note": "* 'situatedness': from situated knowledge - Jean Lave & Etienne Wenger, Situated Learning (1991); Donna Haraway, Simians, Cyborgs, and Women (1991).", "type": "sub"}, {"id": "goldhagen2005", "type": "source", "group": "core", "label": "Goldhagen 2005", "parent": "hub", "cite": "GOLDHAGEN, S. W. (2005) \"Something to Talk About: Modernism, Discourse, Style,\" Journal of the Society of Architectural Historians 64(2): 144-167."}, {"id": "habermas1984", "type": "source", "group": "core", "label": "Habermas 1984", "parent": "hub", "cite": "HABERMAS, J. (1984) \"The Theory of Communicative Action, Vol. I\", trans. T. McCarthy, Beacon Press, Boston, 143-272 (on Weber), 339-402 (on Adorno and Horkheimer)."}, {"id": "tafuri1976", "type": "source", "group": "t1", "label": "Tafuri 1976", "parent": "t1_1", "cite": "TAFURI, M. (1976) \"Architecture and Utopia: Design and Capitalist Development\", trans. B. L. La Penta, MIT Press, Cambridge, MA."}, {"id": "aureli2008", "type": "source", "group": "t1", "label": "Aureli 2008", "parent": "t1_1", "cite": "AURELI, P. V. (2008) \"The Project of Autonomy: Politics and Architecture within and against Capitalism\", Princeton Architectural Press, New York."}, {"id": "ockman1985", "type": "source", "group": "t1", "label": "Ockman 1985", "parent": "t1_1", "cite": "OCKMAN, J., ed. (1985) \"Architecture / Criticism / Ideology\", Princeton Architectural Press, New York."}, {"id": "somol1997", "type": "source", "group": "t1", "label": "Somol 1997", "parent": "t1_1", "cite": "SOMOL, R. E., ed. (1997) \"Autonomy and Ideology: Positioning an Avant-Garde in America\", Monacelli Press, New York."}, {"id": "kipnis1993", "type": "source", "group": "t1", "label": "Kipnis 1993", "parent": "t1_2", "cite": "KIPNIS, J. (1993) \"Towards a New Architecture\" in \"Folding in Architecture\", AD No. 102, John Wiley & Sons, London, 40-49."}, {"id": "agrest1991", "type": "source", "group": "t1", "label": "Agrest 1991", "parent": "t1_2", "cite": "AGREST, D. (1991) \"Design versus Non-Design,\" in \"Architecture from Without\", MIT Press, Cambridge, MA, 28-45."}, {"id": "hays1984", "type": "source", "group": "t1", "label": "Hays 1984", "parent": "t1_2", "cite": "HAYS, K. M. (1984) \"Critical Architecture: Between Culture and Form,\" Perspecta 21: 14-29."}, {"id": "hays1992", "type": "source", "group": "t1", "label": "Hays 1992", "parent": "t1_2", "cite": "HAYS, K. M. (1992) \"Modernism and the Posthumanist Subject\", MIT Press, Cambridge, MA."}, {"id": "mertins2001", "type": "source", "group": "t1", "label": "Mertins 2001", "parent": "t1_2", "cite": "MERTINS, D. (2001) \"Architectures of Becoming: Mies van der Rohe and the Avant-Garde,\" in \"Mies in Berlin\", MoMA, New York, 106-133."}, {"id": "hays1994", "type": "source", "group": "t1", "label": "Hays 1994", "parent": "t1_2", "cite": "HAYS, K. M. (1994) \"Odysseus and the Oarsmen, or, Mies’ Abstraction Once Again,\" in \"The Presence of Mies\", Princeton Architectural Press, New York, 235-248."}, {"id": "said1978", "type": "source", "group": "t2", "label": "Said 1978", "parent": "t2_1", "cite": "SAID, E. W. (1978) \"Orientalism\", Pantheon Books, New York."}, {"id": "spivak1988", "type": "source", "group": "t2", "label": "Spivak 1988", "parent": "t2_1", "cite": "SPIVAK, G. C. (1988) \"Can the Subaltern Speak?\" in \"Marxism and the Interpretation of Culture\", University of Illinois Press, Urbana, 271-313."}, {"id": "bhabha1994", "type": "source", "group": "t2", "label": "Bhabha 1994", "parent": "t2_1", "cite": "BHABHA, H. K. (1994) \"The Location of Culture\", Routledge, London."}, {"id": "chakrabarty2000", "type": "source", "group": "t2", "label": "Chakrabarty 2000", "parent": "t2_1", "cite": "CHAKRABARTY, D. (2000) \"Provincializing Europe: Postcolonial Thought and Historical Difference\", Princeton University Press, Princeton, NJ."}, {"id": "akcan2014", "type": "source", "group": "t2", "label": "Akcan 2014", "parent": "t2_1", "cite": "AKCAN, E. (2014) \"Postcolonial Theories in Architecture,\" in \"A Critical History of Contemporary Architecture, 1960-2010\", Ashgate, Farnham, 115-136."}, {"id": "bozdogan2001", "type": "source", "group": "t2", "label": "Bozdogan 2001", "parent": "t2_1", "cite": "BOZDOĞAN, S. (2001) \"Modernism and Nation Building: Turkish Architectural Culture in the Early Republic\", University of Washington Press, Seattle."}, {"id": "akcan2012", "type": "source", "group": "t2", "label": "Akcan 2012", "parent": "t2_1", "cite": "AKCAN, E. (2012) \"Architecture in Translation: Germany, Turkey, and the Modern House\", Duke University Press, Durham, NC. [Introduction and \"Translation as Mimicry\" in T2.1; remaining chapters in the Conclusion.]"}, {"id": "clifford1980", "type": "source", "group": "t2", "label": "Clifford 1980", "parent": "t2_1", "cite": "CLIFFORD, J. (1980) \"Review of Orientalism, by E. W. Said,\" History and Theory 19(2): 204-223."}, {"id": "fanon1963", "type": "source", "group": "t2", "label": "Fanon 1963", "parent": "t2_1", "cite": "FANON, F. (1963) \"The Wretched of the Earth\", trans. C. Farrington, Grove Press, New York."}, {"id": "garcia2013", "type": "source", "group": "t2", "label": "Garcia & Frankowski 2013", "parent": "t2_1", "cite": "GARCIA, C. and FRANKOWSKI, N. (2013) \"Pure Hardcore Icons: A Manifesto on Pure Form in Architecture\", Artifice Books on Architecture, London."}, {"id": "garcia2020", "type": "source", "group": "t2", "label": "Garcia & Frankowski 2020", "parent": "t2_1", "cite": "GARCIA, C. and FRANKOWSKI, N. (2020) \"Narrative Architecture: A Kynical Manifesto\", nai010 Publishers, Rotterdam."}, {"id": "avermaete_casciato2014", "type": "source", "group": "t2", "label": "Avermaete & Casciato 2014", "parent": "t2_2", "cite": "AVERMAETE, T. and CASCIATO, M. (2014) \"Casablanca Chandigarh: A Report on Modernization\", Park Books / CCA, Zurich / Montreal."}, {"id": "bhan2019", "type": "source", "group": "t2", "label": "Bhan 2019", "parent": "t2_2", "cite": "BHAN, G. (2019) \"Notes on Southern Urban Practice,\" Environment and Urbanization 31(2): 639-654."}, {"id": "robinson2006", "type": "source", "group": "t2", "label": "Robinson 2006", "parent": "t2_2", "cite": "ROBINSON, J. (2006) \"Ordinary Cities: Between Modernity and Development\", Routledge, London and New York."}, {"id": "sassen2005", "type": "source", "group": "t2", "label": "Sassen 2005", "parent": "t2_2", "cite": "SASSEN, S. (2005) \"The Global City: Introducing a Concept,\" Brown Journal of World Affairs 11(2): 27-43."}, {"id": "mccann2013", "type": "source", "group": "t2", "label": "McCann, Roy & Ward 2013", "parent": "t2_2", "cite": "McCANN, E., ROY, A. and WARD, K. (2013) \"Assembling/Worlding Cities,\" Urban Geography 34(5): 581-589."}, {"id": "mcfarlane2011", "type": "source", "group": "t2", "label": "McFarlane 2011", "parent": "t2_2", "cite": "McFARLANE, C. (2011) \"Assemblage and Critical Urbanism,\" City 15(2): 204-224."}, {"id": "avermaete_gosseye2021", "type": "source", "group": "t2", "label": "Avermaete & Gosseye 2021", "parent": "t2_2", "cite": "AVERMAETE, T. and GOSSEYE, J. (2021) \"Urban Design in the 20th Century: A History\", gta Verlag, Zurich."}, {"id": "roy2011", "type": "source", "group": "t2", "label": "Roy 2011", "parent": "t2_2", "cite": "ROY, A. (2011) \"Slumdog Cities: Rethinking Subaltern Urbanism,\" International Journal of Urban and Regional Research 35(2): 223-238."}, {"id": "myers2011", "type": "source", "group": "t2", "label": "Myers 2011", "parent": "t2_2", "cite": "MYERS, G. A. (2011) \"African Cities: Alternative Visions of Urban Theory and Practice\", Zed Books, London and New York."}, {"id": "parnell2012", "type": "source", "group": "t2", "label": "Parnell & Robinson 2012", "parent": "t2_2", "cite": "PARNELL, S. and ROBINSON, J. (2012) \"(Re)theorizing Cities from the Global South,\" Urban Geography 33(4): 593-617."}, {"id": "sassen2006", "type": "source", "group": "t2", "label": "Sassen 2006", "parent": "t2_2", "cite": "SASSEN, S. (2006) \"Territory, Authority, Rights: From Medieval to Global Assemblages\", Princeton University Press, Princeton, NJ."}, {"id": "robinson2016", "type": "source", "group": "t2", "label": "Robinson 2016", "parent": "t2_2", "cite": "ROBINSON, J. (2016) \"Thinking Cities Through Elsewhere,\" Progress in Human Geography 40(1): 3-29."}, {"id": "roy2009", "type": "source", "group": "t2", "label": "Roy 2009", "parent": "t2_2", "cite": "ROY, A. (2009) \"The 21st-Century Metropolis: New Geographies of Theory,\" Regional Studies 43(6): 819-830."}, {"id": "brenner2014i", "type": "source", "group": "t3", "label": "Brenner 2014 (Intro)", "parent": "t3_1", "cite": "BRENNER, N. (2014) \"Introduction: Urban Theory Without an Outside,\" in \"Implosions/Explosions\", Jovis, Berlin, 14-32."}, {"id": "brenner2018", "type": "source", "group": "t3", "label": "Brenner 2018", "parent": "t3_1", "cite": "BRENNER, N. (2018) \"Debating Planetary Urbanization: For an Engaged Pluralism,\" Environment and Planning D 36(3): 570-590."}, {"id": "brenner2014v", "type": "source", "group": "t3", "label": "Brenner (ed.) 2014", "parent": "t3_1", "cite": "BRENNER, N., ed. (2014) \"Implosions/Explosions: Towards a Study of Planetary Urbanization\", Jovis, Berlin."}, {"id": "schmid2018", "type": "source", "group": "t3", "label": "Schmid 2018", "parent": "t3_1", "cite": "SCHMID, C. (2018) \"Journeys Through Planetary Urbanization,\" Environment and Planning D 36(3): 591-610."}, {"id": "goonewardena2018", "type": "source", "group": "t3", "label": "Goonewardena 2018", "parent": "t3_1", "cite": "GOONEWARDENA, K. (2018) \"Planetary Urbanization and Totality,\" Environment and Planning D 36(3): 456-474."}, {"id": "harvey1989", "type": "source", "group": "t3", "label": "Harvey 1989", "parent": "t3_2", "cite": "HARVEY, D. (1989) \"The Condition of Postmodernity\", Blackwell, Oxford."}, {"id": "koolhaas2002", "type": "source", "group": "t3", "label": "Koolhaas 2002", "parent": "t3_2", "cite": "KOOLHAAS, R. (2002) \"Junkspace,\" October 100: 175-190."}, {"id": "soja2011", "type": "source", "group": "t3", "label": "Soja 2011", "parent": "t3_2", "cite": "SOJA, E. W. (2011) \"Beyond Postmetropolis,\" Urban Geography 32(4): 451-469."}, {"id": "sassen2016", "type": "source", "group": "t3", "label": "Sassen 2016", "parent": "t3_2", "cite": "SASSEN, S. (2016) \"At the Systemic Edge: Expulsions,\" European Review 24(1): 89-194."}, {"id": "chakrabarty2009", "type": "source", "group": "core", "label": "Chakrabarty 2009", "parent": "hub", "cite": "CHAKRABARTY, D. (2009) \"The Climate of History: Four Theses,\" Critical Inquiry 35(2): 197-222."}, {"id": "avermaete_sabatino2025", "type": "source", "group": "core", "label": "Avermaete & Sabatino 2025", "parent": "hub", "cite": "AVERMAETE, T. and SABATINO, M., eds. (2025) \"The Global Turn: Six Journeys of Architecture and the City, 1945-1989\", nai010 Publishers, Rotterdam."}], "links": [{"source": "hub", "target": "t1", "kind": "structure"}, {"source": "hub", "target": "t2", "kind": "structure"}, {"source": "hub", "target": "t3", "kind": "structure"}, {"source": "t1", "target": "t1_1", "kind": "structure"}, {"source": "t1", "target": "t1_2", "kind": "structure"}, {"source": "t2", "target": "t2_1", "kind": "structure"}, {"source": "t2", "target": "t2_2", "kind": "structure"}, {"source": "t3", "target": "t3_1", "kind": "structure"}, {"source": "t3", "target": "t3_2", "kind": "structure"}, {"source": "hub", "target": "goldhagen2005", "kind": "structure"}, {"source": "hub", "target": "habermas1984", "kind": "structure"}, {"source": "t1_1", "target": "tafuri1976", "kind": "structure"}, {"source": "t1_1", "target": "aureli2008", "kind": "structure"}, {"source": "t1_1", "target": "ockman1985", "kind": "structure"}, {"source": "t1_1", "target": "somol1997", "kind": "structure"}, {"source": "t1_2", "target": "kipnis1993", "kind": "structure"}, {"source": "t1_2", "target": "agrest1991", "kind": "structure"}, {"source": "t1_2", "target": "hays1984", "kind": "structure"}, {"source": "t1_2", "target": "hays1992", "kind": "structure"}, {"source": "t1_2", "target": "mertins2001", "kind": "structure"}, {"source": "t1_2", "target": "hays1994", "kind": "structure"}, {"source": "t2_1", "target": "said1978", "kind": "structure"}, {"source": "t2_1", "target": "spivak1988", "kind": "structure"}, {"source": "t2_1", "target": "bhabha1994", "kind": "structure"}, {"source": "t2_1", "target": "chakrabarty2000", "kind": "structure"}, {"source": "t2_1", "target": "akcan2014", "kind": "structure"}, {"source": "t2_1", "target": "bozdogan2001", "kind": "structure"}, {"source": "t2_1", "target": "akcan2012", "kind": "structure"}, {"source": "t2_1", "target": "clifford1980", "kind": "structure"}, {"source": "t2_1", "target": "fanon1963", "kind": "structure"}, {"source": "t2_1", "target": "garcia2013", "kind": "structure"}, {"source": "t2_1", "target": "garcia2020", "kind": "structure"}, {"source": "t2_2", "target": "avermaete_casciato2014", "kind": "structure"}, {"source": "t2_2", "target": "bhan2019", "kind": "structure"}, {"source": "t2_2", "target": "robinson2006", "kind": "structure"}, {"source": "t2_2", "target": "sassen2005", "kind": "structure"}, {"source": "t2_2", "target": "mccann2013", "kind": "structure"}, {"source": "t2_2", "target": "mcfarlane2011", "kind": "structure"}, {"source": "t2_2", "target": "avermaete_gosseye2021", "kind": "structure"}, {"source": "t2_2", "target": "roy2011", "kind": "structure"}, {"source": "t2_2", "target": "myers2011", "kind": "structure"}, {"source": "t2_2", "target": "parnell2012", "kind": "structure"}, {"source": "t2_2", "target": "sassen2006", "kind": "structure"}, {"source": "t2_2", "target": "robinson2016", "kind": "structure"}, {"source": "t2_2", "target": "roy2009", "kind": "structure"}, {"source": "t3_1", "target": "brenner2014i", "kind": "structure"}, {"source": "t3_1", "target": "brenner2018", "kind": "structure"}, {"source": "t3_1", "target": "brenner2014v", "kind": "structure"}, {"source": "t3_1", "target": "schmid2018", "kind": "structure"}, {"source": "t3_1", "target": "goonewardena2018", "kind": "structure"}, {"source": "t3_2", "target": "harvey1989", "kind": "structure"}, {"source": "t3_2", "target": "koolhaas2002", "kind": "structure"}, {"source": "t3_2", "target": "soja2011", "kind": "structure"}, {"source": "t3_2", "target": "sassen2016", "kind": "structure"}, {"source": "hub", "target": "chakrabarty2009", "kind": "structure"}, {"source": "hub", "target": "avermaete_sabatino2025", "kind": "structure"}, {"source": "goldhagen2005", "target": "hays1984", "kind": "cross"}, {"source": "goldhagen2005", "target": "tafuri1976", "kind": "cross"}, {"source": "tafuri1976", "target": "aureli2008", "kind": "cross"}, {"source": "tafuri1976", "target": "hays1984", "kind": "cross"}, {"source": "hays1984", "target": "aureli2008", "kind": "cross"}, {"source": "akcan2012", "target": "avermaete_sabatino2025", "kind": "cross"}, {"source": "akcan2012", "target": "akcan2014", "kind": "cross"}, {"source": "akcan2014", "target": "bozdogan2001", "kind": "cross"}, {"source": "akcan2014", "target": "avermaete_casciato2014", "kind": "cross"}, {"source": "avermaete_casciato2014", "target": "avermaete_gosseye2021", "kind": "cross"}, {"source": "avermaete_gosseye2021", "target": "avermaete_sabatino2025", "kind": "cross"}, {"source": "avermaete_casciato2014", "target": "avermaete_sabatino2025", "kind": "cross"}, {"source": "brenner2014i", "target": "brenner2014v", "kind": "cross"}, {"source": "brenner2014i", "target": "brenner2018", "kind": "cross"}, {"source": "brenner2018", "target": "schmid2018", "kind": "cross"}, {"source": "brenner2018", "target": "goonewardena2018", "kind": "cross"}, {"source": "schmid2018", "target": "goonewardena2018", "kind": "cross"}, {"source": "brenner2018", "target": "t2", "kind": "cross"}, {"source": "mcfarlane2011", "target": "brenner2018", "kind": "cross"}, {"source": "chakrabarty2000", "target": "chakrabarty2009", "kind": "cross"}, {"source": "said1978", "target": "spivak1988", "kind": "cross"}, {"source": "said1978", "target": "bhabha1994", "kind": "cross"}, {"source": "said1978", "target": "fanon1963", "kind": "cross"}, {"source": "spivak1988", "target": "chakrabarty2000", "kind": "cross"}, {"source": "bhabha1994", "target": "chakrabarty2000", "kind": "cross"}, {"source": "said1978", "target": "clifford1980", "kind": "cross"}, {"source": "garcia2013", "target": "garcia2020", "kind": "cross"}, {"source": "sassen2005", "target": "sassen2006", "kind": "cross"}, {"source": "sassen2006", "target": "sassen2016", "kind": "cross"}, {"source": "sassen2005", "target": "sassen2016", "kind": "cross"}, {"source": "roy2009", "target": "roy2011", "kind": "cross"}, {"source": "robinson2006", "target": "robinson2016", "kind": "cross"}, {"source": "robinson2006", "target": "parnell2012", "kind": "cross"}, {"source": "mccann2013", "target": "mcfarlane2011", "kind": "cross"}, {"source": "mccann2013", "target": "roy2009", "kind": "cross"}, {"source": "bhan2019", "target": "robinson2006", "kind": "cross"}, {"source": "myers2011", "target": "robinson2006", "kind": "cross"}, {"source": "harvey1989", "target": "koolhaas2002", "kind": "cross"}, {"source": "koolhaas2002", "target": "soja2011", "kind": "cross"}, {"source": "harvey1989", "target": "soja2011", "kind": "cross"}, {"source": "chakrabarty2009", "target": "avermaete_sabatino2025", "kind": "cross"}, {"source": "t2", "target": "akcan2012", "kind": "cross"}, {"source": "goldhagen2005", "target": "chakrabarty2009", "kind": "cross"}, {"source": "goldhagen2005", "target": "t1", "kind": "cross"}, {"source": "habermas1984", "target": "hays1984", "kind": "cross"}, {"source": "chakrabarty2009", "target": "t3", "kind": "cross"}, {"source": "avermaete_sabatino2025", "target": "t2", "kind": "cross"}, {"source": "aureli2008", "target": "brenner2018", "kind": "cross"}, {"source": "hays1992", "target": "tafuri1976", "kind": "cross"}, {"source": "chakrabarty2000", "target": "robinson2006", "kind": "cross"}, {"source": "said1978", "target": "myers2011", "kind": "cross"}, {"source": "said1978", "target": "akcan2014", "kind": "cross"}, {"source": "spivak1988", "target": "roy2011", "kind": "cross"}, {"source": "bhabha1994", "target": "akcan2012", "kind": "cross"}, {"source": "fanon1963", "target": "myers2011", "kind": "cross"}, {"source": "brenner2018", "target": "robinson2006", "kind": "cross"}, {"source": "brenner2018", "target": "roy2011", "kind": "cross"}, {"source": "soja2011", "target": "brenner2018", "kind": "cross"}, {"source": "koolhaas2002", "target": "brenner2018", "kind": "cross"}, {"source": "sassen2016", "target": "brenner2018", "kind": "cross"}, {"source": "harvey1989", "target": "brenner2014v", "kind": "cross"}, {"source": "roy2011", "target": "mccann2013", "kind": "cross"}, {"source": "avermaete_casciato2014", "target": "bozdogan2001", "kind": "cross"}, {"source": "robinson2016", "target": "mccann2013", "kind": "cross"}, {"source": "parnell2012", "target": "bhan2019", "kind": "cross"}, {"source": "roy2009", "target": "robinson2016", "kind": "cross"}, {"source": "ockman1985", "target": "somol1997", "kind": "cross"}, {"source": "ockman1985", "target": "tafuri1976", "kind": "cross"}, {"source": "somol1997", "target": "aureli2008", "kind": "cross"}, {"source": "kipnis1993", "target": "agrest1991", "kind": "cross"}, {"source": "agrest1991", "target": "aureli2008", "kind": "cross"}, {"source": "mertins2001", "target": "hays1994", "kind": "cross"}, {"source": "mertins2001", "target": "hays1992", "kind": "cross"}], "tlinks": [{"source": "goldhagen2005", "target": "aureli2008"}, {"source": "goldhagen2005", "target": "mertins2001"}, {"source": "goldhagen2005", "target": "chakrabarty2000"}, {"source": "goldhagen2005", "target": "bozdogan2001"}, {"source": "goldhagen2005", "target": "robinson2006"}, {"source": "goldhagen2005", "target": "sassen2005"}, {"source": "goldhagen2005", "target": "sassen2006"}, {"source": "goldhagen2005", "target": "roy2009"}, {"source": "goldhagen2005", "target": "koolhaas2002"}, {"source": "goldhagen2005", "target": "chakrabarty2009"}, {"source": "aureli2008", "target": "mertins2001"}, {"source": "aureli2008", "target": "chakrabarty2000"}, {"source": "aureli2008", "target": "bozdogan2001"}, {"source": "aureli2008", "target": "robinson2006"}, {"source": "aureli2008", "target": "sassen2005"}, {"source": "aureli2008", "target": "sassen2006"}, {"source": "aureli2008", "target": "roy2009"}, {"source": "aureli2008", "target": "koolhaas2002"}, {"source": "aureli2008", "target": "chakrabarty2009"}, {"source": "mertins2001", "target": "chakrabarty2000"}, {"source": "mertins2001", "target": "bozdogan2001"}, {"source": "mertins2001", "target": "robinson2006"}, {"source": "mertins2001", "target": "sassen2005"}, {"source": "mertins2001", "target": "sassen2006"}, {"source": "mertins2001", "target": "roy2009"}, {"source": "mertins2001", "target": "koolhaas2002"}, {"source": "mertins2001", "target": "chakrabarty2009"}, {"source": "chakrabarty2000", "target": "bozdogan2001"}, {"source": "chakrabarty2000", "target": "robinson2006"}, {"source": "chakrabarty2000", "target": "sassen2005"}, {"source": "chakrabarty2000", "target": "sassen2006"}, {"source": "chakrabarty2000", "target": "roy2009"}, {"source": "chakrabarty2000", "target": "koolhaas2002"}, {"source": "chakrabarty2000", "target": "chakrabarty2009"}, {"source": "bozdogan2001", "target": "robinson2006"}, {"source": "bozdogan2001", "target": "sassen2005"}, {"source": "bozdogan2001", "target": "sassen2006"}, {"source": "bozdogan2001", "target": "roy2009"}, {"source": "bozdogan2001", "target": "koolhaas2002"}, {"source": "bozdogan2001", "target": "chakrabarty2009"}, {"source": "robinson2006", "target": "sassen2005"}, {"source": "robinson2006", "target": "sassen2006"}, {"source": "robinson2006", "target": "roy2009"}, {"source": "robinson2006", "target": "koolhaas2002"}, {"source": "robinson2006", "target": "chakrabarty2009"}, {"source": "sassen2005", "target": "sassen2006"}, {"source": "sassen2005", "target": "roy2009"}, {"source": "sassen2005", "target": "koolhaas2002"}, {"source": "sassen2005", "target": "chakrabarty2009"}, {"source": "sassen2006", "target": "roy2009"}, {"source": "sassen2006", "target": "koolhaas2002"}, {"source": "sassen2006", "target": "chakrabarty2009"}, {"source": "roy2009", "target": "koolhaas2002"}, {"source": "roy2009", "target": "chakrabarty2009"}, {"source": "koolhaas2002", "target": "chakrabarty2009"}, {"source": "habermas1984", "target": "ockman1985"}, {"source": "habermas1984", "target": "hays1984"}, {"source": "habermas1984", "target": "spivak1988"}, {"source": "habermas1984", "target": "clifford1980"}, {"source": "habermas1984", "target": "harvey1989"}, {"source": "ockman1985", "target": "hays1984"}, {"source": "ockman1985", "target": "spivak1988"}, {"source": "ockman1985", "target": "clifford1980"}, {"source": "ockman1985", "target": "harvey1989"}, {"source": "hays1984", "target": "spivak1988"}, {"source": "hays1984", "target": "clifford1980"}, {"source": "hays1984", "target": "harvey1989"}, {"source": "spivak1988", "target": "clifford1980"}, {"source": "spivak1988", "target": "harvey1989"}, {"source": "clifford1980", "target": "harvey1989"}, {"source": "tafuri1976", "target": "said1978"}, {"source": "somol1997", "target": "kipnis1993"}, {"source": "somol1997", "target": "agrest1991"}, {"source": "somol1997", "target": "hays1992"}, {"source": "somol1997", "target": "hays1994"}, {"source": "somol1997", "target": "bhabha1994"}, {"source": "kipnis1993", "target": "agrest1991"}, {"source": "kipnis1993", "target": "hays1992"}, {"source": "kipnis1993", "target": "hays1994"}, {"source": "kipnis1993", "target": "bhabha1994"}, {"source": "agrest1991", "target": "hays1992"}, {"source": "agrest1991", "target": "hays1994"}, {"source": "agrest1991", "target": "bhabha1994"}, {"source": "hays1992", "target": "hays1994"}, {"source": "hays1992", "target": "bhabha1994"}, {"source": "hays1994", "target": "bhabha1994"}, {"source": "akcan2014", "target": "akcan2012"}, {"source": "akcan2014", "target": "garcia2013"}, {"source": "akcan2014", "target": "avermaete_casciato2014"}, {"source": "akcan2014", "target": "bhan2019"}, {"source": "akcan2014", "target": "mccann2013"}, {"source": "akcan2014", "target": "mcfarlane2011"}, {"source": "akcan2014", "target": "roy2011"}, {"source": "akcan2014", "target": "myers2011"}, {"source": "akcan2014", "target": "parnell2012"}, {"source": "akcan2014", "target": "robinson2016"}, {"source": "akcan2014", "target": "brenner2014i"}, {"source": "akcan2014", "target": "brenner2018"}, {"source": "akcan2014", "target": "brenner2014v"}, {"source": "akcan2014", "target": "schmid2018"}, {"source": "akcan2014", "target": "goonewardena2018"}, {"source": "akcan2014", "target": "soja2011"}, {"source": "akcan2014", "target": "sassen2016"}, {"source": "akcan2012", "target": "garcia2013"}, {"source": "akcan2012", "target": "avermaete_casciato2014"}, {"source": "akcan2012", "target": "bhan2019"}, {"source": "akcan2012", "target": "mccann2013"}, {"source": "akcan2012", "target": "mcfarlane2011"}, {"source": "akcan2012", "target": "roy2011"}, {"source": "akcan2012", "target": "myers2011"}, {"source": "akcan2012", "target": "parnell2012"}, {"source": "akcan2012", "target": "robinson2016"}, {"source": "akcan2012", "target": "brenner2014i"}, {"source": "akcan2012", "target": "brenner2018"}, {"source": "akcan2012", "target": "brenner2014v"}, {"source": "akcan2012", "target": "schmid2018"}, {"source": "akcan2012", "target": "goonewardena2018"}, {"source": "akcan2012", "target": "soja2011"}, {"source": "akcan2012", "target": "sassen2016"}, {"source": "garcia2013", "target": "avermaete_casciato2014"}, {"source": "garcia2013", "target": "bhan2019"}, {"source": "garcia2013", "target": "mccann2013"}, {"source": "garcia2013", "target": "mcfarlane2011"}, {"source": "garcia2013", "target": "roy2011"}, {"source": "garcia2013", "target": "myers2011"}, {"source": "garcia2013", "target": "parnell2012"}, {"source": "garcia2013", "target": "robinson2016"}, {"source": "garcia2013", "target": "brenner2014i"}, {"source": "garcia2013", "target": "brenner2018"}, {"source": "garcia2013", "target": "brenner2014v"}, {"source": "garcia2013", "target": "schmid2018"}, {"source": "garcia2013", "target": "goonewardena2018"}, {"source": "garcia2013", "target": "soja2011"}, {"source": "garcia2013", "target": "sassen2016"}, {"source": "avermaete_casciato2014", "target": "bhan2019"}, {"source": "avermaete_casciato2014", "target": "mccann2013"}, {"source": "avermaete_casciato2014", "target": "mcfarlane2011"}, {"source": "avermaete_casciato2014", "target": "roy2011"}, {"source": "avermaete_casciato2014", "target": "myers2011"}, {"source": "avermaete_casciato2014", "target": "parnell2012"}, {"source": "avermaete_casciato2014", "target": "robinson2016"}, {"source": "avermaete_casciato2014", "target": "brenner2014i"}, {"source": "avermaete_casciato2014", "target": "brenner2018"}, {"source": "avermaete_casciato2014", "target": "brenner2014v"}, {"source": "avermaete_casciato2014", "target": "schmid2018"}, {"source": "avermaete_casciato2014", "target": "goonewardena2018"}, {"source": "avermaete_casciato2014", "target": "soja2011"}, {"source": "avermaete_casciato2014", "target": "sassen2016"}, {"source": "bhan2019", "target": "mccann2013"}, {"source": "bhan2019", "target": "mcfarlane2011"}, {"source": "bhan2019", "target": "roy2011"}, {"source": "bhan2019", "target": "myers2011"}, {"source": "bhan2019", "target": "parnell2012"}, {"source": "bhan2019", "target": "robinson2016"}, {"source": "bhan2019", "target": "brenner2014i"}, {"source": "bhan2019", "target": "brenner2018"}, {"source": "bhan2019", "target": "brenner2014v"}, {"source": "bhan2019", "target": "schmid2018"}, {"source": "bhan2019", "target": "goonewardena2018"}, {"source": "bhan2019", "target": "soja2011"}, {"source": "bhan2019", "target": "sassen2016"}, {"source": "mccann2013", "target": "mcfarlane2011"}, {"source": "mccann2013", "target": "roy2011"}, {"source": "mccann2013", "target": "myers2011"}, {"source": "mccann2013", "target": "parnell2012"}, {"source": "mccann2013", "target": "robinson2016"}, {"source": "mccann2013", "target": "brenner2014i"}, {"source": "mccann2013", "target": "brenner2018"}, {"source": "mccann2013", "target": "brenner2014v"}, {"source": "mccann2013", "target": "schmid2018"}, {"source": "mccann2013", "target": "goonewardena2018"}, {"source": "mccann2013", "target": "soja2011"}, {"source": "mccann2013", "target": "sassen2016"}, {"source": "mcfarlane2011", "target": "roy2011"}, {"source": "mcfarlane2011", "target": "myers2011"}, {"source": "mcfarlane2011", "target": "parnell2012"}, {"source": "mcfarlane2011", "target": "robinson2016"}, {"source": "mcfarlane2011", "target": "brenner2014i"}, {"source": "mcfarlane2011", "target": "brenner2018"}, {"source": "mcfarlane2011", "target": "brenner2014v"}, {"source": "mcfarlane2011", "target": "schmid2018"}, {"source": "mcfarlane2011", "target": "goonewardena2018"}, {"source": "mcfarlane2011", "target": "soja2011"}, {"source": "mcfarlane2011", "target": "sassen2016"}, {"source": "roy2011", "target": "myers2011"}, {"source": "roy2011", "target": "parnell2012"}, {"source": "roy2011", "target": "robinson2016"}, {"source": "roy2011", "target": "brenner2014i"}, {"source": "roy2011", "target": "brenner2018"}, {"source": "roy2011", "target": "brenner2014v"}, {"source": "roy2011", "target": "schmid2018"}, {"source": "roy2011", "target": "goonewardena2018"}, {"source": "roy2011", "target": "soja2011"}, {"source": "roy2011", "target": "sassen2016"}, {"source": "myers2011", "target": "parnell2012"}, {"source": "myers2011", "target": "robinson2016"}, {"source": "myers2011", "target": "brenner2014i"}, {"source": "myers2011", "target": "brenner2018"}, {"source": "myers2011", "target": "brenner2014v"}, {"source": "myers2011", "target": "schmid2018"}, {"source": "myers2011", "target": "goonewardena2018"}, {"source": "myers2011", "target": "soja2011"}, {"source": "myers2011", "target": "sassen2016"}, {"source": "parnell2012", "target": "robinson2016"}, {"source": "parnell2012", "target": "brenner2014i"}, {"source": "parnell2012", "target": "brenner2018"}, {"source": "parnell2012", "target": "brenner2014v"}, {"source": "parnell2012", "target": "schmid2018"}, {"source": "parnell2012", "target": "goonewardena2018"}, {"source": "parnell2012", "target": "soja2011"}, {"source": "parnell2012", "target": "sassen2016"}, {"source": "robinson2016", "target": "brenner2014i"}, {"source": "robinson2016", "target": "brenner2018"}, {"source": "robinson2016", "target": "brenner2014v"}, {"source": "robinson2016", "target": "schmid2018"}, {"source": "robinson2016", "target": "goonewardena2018"}, {"source": "robinson2016", "target": "soja2011"}, {"source": "robinson2016", "target": "sassen2016"}, {"source": "brenner2014i", "target": "brenner2018"}, {"source": "brenner2014i", "target": "brenner2014v"}, {"source": "brenner2014i", "target": "schmid2018"}, {"source": "brenner2014i", "target": "goonewardena2018"}, {"source": "brenner2014i", "target": "soja2011"}, {"source": "brenner2014i", "target": "sassen2016"}, {"source": "brenner2018", "target": "brenner2014v"}, {"source": "brenner2018", "target": "schmid2018"}, {"source": "brenner2018", "target": "goonewardena2018"}, {"source": "brenner2018", "target": "soja2011"}, {"source": "brenner2018", "target": "sassen2016"}, {"source": "brenner2014v", "target": "schmid2018"}, {"source": "brenner2014v", "target": "goonewardena2018"}, {"source": "brenner2014v", "target": "soja2011"}, {"source": "brenner2014v", "target": "sassen2016"}, {"source": "schmid2018", "target": "goonewardena2018"}, {"source": "schmid2018", "target": "soja2011"}, {"source": "schmid2018", "target": "sassen2016"}, {"source": "goonewardena2018", "target": "soja2011"}, {"source": "goonewardena2018", "target": "sassen2016"}, {"source": "soja2011", "target": "sassen2016"}, {"source": "garcia2020", "target": "avermaete_gosseye2021"}, {"source": "garcia2020", "target": "avermaete_sabatino2025"}, {"source": "avermaete_gosseye2021", "target": "avermaete_sabatino2025"}]};
+const COL={core:'#f5f5f5',t1:'#f4d03f',t2:'#2f80ed',t3:'#27ae60'};
+const RAD={hub:26,theme:16,sub:11,source:6};
+
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+let W,H,DPR=Math.min(window.devicePixelRatio||1,2);
+function resize(){W=innerWidth;H=innerHeight;cv.width=W*DPR;cv.height=H*DPR;cv.style.width=W+'px';cv.style.height=H+'px';ctx.setTransform(DPR,0,0,DPR,0,0);}
+addEventListener('resize',resize);resize();
+
+// ---------- vector helpers ----------
+function norm(v){const m=Math.hypot(v[0],v[1],v[2])||1;return [v[0]/m,v[1]/m,v[2]/m];}
+function cross(a,b){return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}
+function basis(d){let a=Math.abs(d[1])<0.9?[0,1,0]:[1,0,0];const u=norm(cross(d,a));const v=norm(cross(d,u));return [u,v];}
+const GA=2.39996323;
+function coneDirs(dir,half,n){const [u,v]=basis(dir);const out=[];
+  for(let k=0;k<n;k++){const t=n===1?0:(k+0.5)/n;const r=half*Math.sqrt(t);const phi=k*GA;
+    const cr=Math.cos(r),sr=Math.sin(r),cp=Math.cos(phi),sp=Math.sin(phi);
+    out.push(norm([dir[0]*cr+(u[0]*cp+v[0]*sp)*sr, dir[1]*cr+(u[1]*cp+v[1]*sp)*sr, dir[2]*cr+(u[2]*cp+v[2]*sp)*sr]));}
+  return out;}
+
+// ---------- build nodes ----------
+const SECONDARY=new Set(['somol1997','clifford1980','fanon1963','garcia2013','garcia2020','avermaete_gosseye2021','roy2011','myers2011','parnell2012','sassen2006','brenner2014v','schmid2018','goonewardena2018','soja2011']);
+const nodes=DATA.nodes.map(n=>({...n,color:COL[n.group]||'#aaa',r:RAD[n.type],secondary:SECONDARY.has(n.id),X:0,Y:0,Z:0}));
+const byId={};nodes.forEach(n=>byId[n.id]=n);
+const links=DATA.links.map(l=>({source:byId[l.source],target:byId[l.target],kind:l.kind}));
+const tlinks=(DATA.tlinks||[]).map(l=>({source:byId[l.source],target:byId[l.target]}));
+let showTime=true;
+function nodeYear(n){const m=(n.id||'').match(/(?:19|20)\d{2}/);return m?+m[0]:null;}
+const adj={};nodes.forEach(n=>adj[n.id]=new Set());
+links.forEach(l=>{adj[l.source.id].add(l.target.id);adj[l.target.id].add(l.source.id);});
+
+// ---------- 3D layout: concentric shells ----------
+const R={hubsrc:135,theme:250,sub:400,source:550,source2:625};
+const hubN=byId.hub; hubN.X=hubN.Y=hubN.Z=0;
+const TDIR=[[0.92,-0.58,0.28],[-0.34,0.66,0.68],[-0.72,0.04,-0.78]].map(norm);
+const themeArr=nodes.filter(n=>n.type==='theme');
+const subArr=nodes.filter(n=>n.type==='sub');
+const srcArr=nodes.filter(n=>n.type==='source');
+themeArr.forEach((t,i)=>{t.dir=TDIR[i];t.X=t.dir[0]*R.theme;t.Y=t.dir[1]*R.theme;t.Z=t.dir[2]*R.theme;});
+themeArr.forEach(t=>{const ss=subArr.filter(s=>s.theme===t.id);const ds=coneDirs(t.dir,0.66,ss.length);
+  ss.forEach((s,k)=>{s.dir=ds[k];s.X=s.dir[0]*R.sub;s.Y=s.dir[1]*R.sub;s.Z=s.dir[2]*R.sub;});});
+subArr.forEach(s=>{const src=srcArr.filter(x=>x.parent===s.id);
+  const prim=src.filter(x=>!x.secondary),sec=src.filter(x=>x.secondary);
+  const dp=coneDirs(s.dir,0.5,prim.length);
+  prim.forEach((x,k)=>{x.X=dp[k][0]*R.source;x.Y=dp[k][1]*R.source;x.Z=dp[k][2]*R.source;});
+  const dsd=coneDirs(s.dir,0.64,sec.length);
+  sec.forEach((x,k)=>{x.X=dsd[k][0]*R.source2;x.Y=dsd[k][1]*R.source2;x.Z=dsd[k][2]*R.source2;});});
+const hubSrc=srcArr.filter(x=>x.parent==='hub');const hds=coneDirs(norm([0.1,1,0.2]),0.9,hubSrc.length);
+hubSrc.forEach((x,k)=>{x.X=hds[k][0]*R.hubsrc;x.Y=hds[k][1]*R.hubsrc;x.Z=hds[k][2]*R.hubsrc;});
+
+// ---------- camera ----------
+let yaw=0.6,pitch=-0.32,zoom=1,autoYaw=0.0016,target=null,viewLock=false;
+const FOCAL=820;
+function project(n){
+  let x=n.X,y=n.Y,z=n.Z;
+  const cy=Math.cos(yaw),sy=Math.sin(yaw);
+  let x1=x*cy+z*sy, z1=-x*sy+z*cy, y1=y;
+  const cp=Math.cos(pitch),sp=Math.sin(pitch);
+  let y2=y1*cp-z1*sp, z2=y1*sp+z1*cp, x2=x1;
+  const pp=FOCAL/(FOCAL+z2);
+  return {x:W/2+x2*pp*zoom, y:H/2+y2*pp*zoom, z:z2, pp:pp, s:pp*zoom};
+}
+function fog(pp){return Math.max(0.18,Math.min(1,(pp-0.5)*1.05));}
+function angDelta(a,b){let d=(a-b)%(2*Math.PI);if(d>Math.PI)d-=2*Math.PI;if(d<-Math.PI)d+=2*Math.PI;return d;}
+const VIEWS={front:{yaw:0,pitch:0},back:{yaw:Math.PI,pitch:0},right:{yaw:Math.PI/2,pitch:0},left:{yaw:-Math.PI/2,pitch:0},top:{yaw:0,pitch:-1.45},bottom:{yaw:0,pitch:1.45}};
+function goView(v){const t=VIEWS[v];if(!t)return;target={yaw:yaw+angDelta(t.yaw,yaw),pitch:t.pitch};viewLock=true;selId=null;pinned=null;hidePanel();}
+// ---- ViewCube: a real 3D cube that rotates with the camera; faces are clickable ----
+const MINI=84;
+const mini=document.getElementById('mini'),miniCtx=mini.getContext('2d');
+mini.width=MINI*DPR;mini.height=MINI*DPR;miniCtx.setTransform(DPR,0,0,DPR,0,0);
+const FACES=[
+ {name:'front', n:[0,0,-1], v:[[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1]]},
+ {name:'back',  n:[0,0,1],  v:[[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]]},
+ {name:'left',  n:[-1,0,0], v:[[-1,-1,-1],[-1,-1,1],[-1,1,1],[-1,1,-1]]},
+ {name:'right', n:[1,0,0],  v:[[1,-1,-1],[1,-1,1],[1,1,1],[1,1,-1]]},
+ {name:'top',   n:[0,1,0],  v:[[-1,1,-1],[1,1,-1],[1,1,1],[-1,1,1]]},
+ {name:'bottom',n:[0,-1,0], v:[[-1,-1,-1],[1,-1,-1],[1,-1,1],[-1,-1,1]]}
+];
+function rot3(p){const cyw=Math.cos(yaw),syw=Math.sin(yaw),cpi=Math.cos(pitch),spi=Math.sin(pitch);
+  const x=p[0],y=p[1],z=p[2],x1=x*cyw+z*syw,z1=-x*syw+z*cyw,y1=y;
+  return [x1, y1*cpi-z1*spi, y1*spi+z1*cpi];}
+function cEdges(poly,color,dash){miniCtx.strokeStyle=color;miniCtx.setLineDash(dash?[2,2]:[]);miniCtx.lineWidth=1;
+  miniCtx.beginPath();poly.forEach((p,i)=>{i?miniCtx.lineTo(p[0],p[1]):miniCtx.moveTo(p[0],p[1]);});miniCtx.closePath();miniCtx.stroke();miniCtx.setLineDash([]);}
+function pip(pt,poly){let c=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const xi=poly[i][0],yi=poly[i][1],xj=poly[j][0],yj=poly[j][1];
+  if(((yi>pt[1])!=(yj>pt[1]))&&(pt[0]<(xj-xi)*(pt[1]-yi)/(yj-yi)+xi))c=!c;}return c;}
+let cubeHit=[];
+function renderMini(){const S=MINI,cx=S/2,cy=S/2,cs=24,MSC=0.05;miniCtx.clearRect(0,0,S,S);
+  const faces=FACES.map(F=>{const rn=rot3(F.n);const poly=F.v.map(p=>{const r=rot3(p);return [cx+r[0]*cs,cy+r[1]*cs,r[2]];});
+    return {name:F.name,front:rn[2]<0,poly:poly,depth:(poly[0][2]+poly[1][2]+poly[2][2]+poly[3][2])/4};});
+  // back faces: faint dashed (transparent cube)
+  faces.filter(f=>!f.front).forEach(f=>cEdges(f.poly,'rgba(150,155,170,0.18)',true));
+  // inner sphere (perspective) - mirrors the main highlight when something is selected
+  const sp=nodes.map(n=>{const r=rot3([n.X,n.Y,n.Z]);const pp=FOCAL/(FOCAL+r[2]);
+    return {x:cx+r[0]*pp*MSC,y:cy+r[1]*pp*MSC,z:r[2],c:n.color,id:n.id,rr:Math.max(0.7,n.r*pp*MSC*0.9)};}).sort((a,b)=>a.z-b.z);
+  for(const p of sp){const onn=active?active.has(p.id):true;
+    miniCtx.globalAlpha=onn?0.95:0.12;
+    miniCtx.beginPath();miniCtx.arc(p.x,p.y,p.rr*(active&&onn?1.5:1),0,7);miniCtx.fillStyle=p.c;miniCtx.fill();}
+  miniCtx.globalAlpha=1;
+  // front faces: subtle glass fill + thin edges; record click polygons
+  const fr=faces.filter(f=>f.front).sort((a,b)=>b.depth-a.depth); cubeHit=[];
+  fr.forEach(f=>{miniCtx.beginPath();f.poly.forEach((p,i)=>{i?miniCtx.lineTo(p[0],p[1]):miniCtx.moveTo(p[0],p[1]);});miniCtx.closePath();
+    miniCtx.fillStyle='rgba(255,255,255,0.03)';miniCtx.fill();
+    cEdges(f.poly,'rgba(200,204,216,0.65)',false);
+    cubeHit.push({name:f.name,poly:f.poly.map(p=>[p[0],p[1]])});});}
+// cube interaction: drag to rotate the camera; a click (no drag) jumps to that face's view
+let cdrag=false,cmoved=false,clast={x:0,y:0};
+mini.addEventListener('mousedown',e=>{cdrag=true;cmoved=false;viewLock=false;target=null;clast={x:e.clientX,y:e.clientY};e.stopPropagation();});
+window.addEventListener('mousemove',e=>{if(!cdrag)return;const dx=e.clientX-clast.x,dy=e.clientY-clast.y;
+  if(Math.abs(dx)+Math.abs(dy)>3)cmoved=true;yaw+=dx*0.011;pitch=Math.max(-1.5,Math.min(1.5,pitch+dy*0.011));clast={x:e.clientX,y:e.clientY};});
+window.addEventListener('mouseup',e=>{if(!cdrag)return;cdrag=false;
+  if(!cmoved){const r=mini.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
+    for(let i=cubeHit.length-1;i>=0;i--){if(pip([mx,my],cubeHit[i].poly)){goView(cubeHit[i].name);break;}}}});
+mini.addEventListener('touchstart',e=>{cdrag=true;cmoved=false;viewLock=false;target=null;clast={x:e.touches[0].clientX,y:e.touches[0].clientY};e.stopPropagation();},{passive:false});
+mini.addEventListener('touchmove',e=>{if(!cdrag)return;const t=e.touches[0],dx=t.clientX-clast.x,dy=t.clientY-clast.y;if(Math.abs(dx)+Math.abs(dy)>3)cmoved=true;yaw+=dx*0.011;pitch=Math.max(-1.5,Math.min(1.5,pitch+dy*0.011));clast={x:t.clientX,y:t.clientY};e.preventDefault();},{passive:false});
+mini.addEventListener('touchend',e=>{if(!cdrag)return;cdrag=false;if(!cmoved&&e.changedTouches.length){const t=e.changedTouches[0],r=mini.getBoundingClientRect(),mx=t.clientX-r.left,my=t.clientY-r.top;for(let i=cubeHit.length-1;i>=0;i--){if(pip([mx,my],cubeHit[i].poly)){goView(cubeHit[i].name);break;}}}},{passive:false});
+function hexA(hex,a){const h=hex.replace('#','');return `rgba(${parseInt(h.substr(0,2),16)},${parseInt(h.substr(2,2),16)},${parseInt(h.substr(4,2),16)},${a})`;}
+function mix(hex,t,white){const h=hex.replace('#','');let r=parseInt(h.substr(0,2),16),g=parseInt(h.substr(2,2),16),b=parseInt(h.substr(4,2),16);
+  const tg=white?255:0; r=Math.round(r+(tg-r)*t);g=Math.round(g+(tg-g)*t);b=Math.round(b+(tg-b)*t);return `rgb(${r},${g},${b})`;}
+
+let hoverId=null,selId=null,active=null,pinned=null,periodHighlight=false;
+function neighborhood(id){const s=new Set([id]);if(id)adj[id].forEach(x=>s.add(x));if(id==='hub')s.add('akcan2012');return s;}
+
+function draw(){
+  if(target){yaw+=(target.yaw-yaw)*0.16;pitch+=(target.pitch-pitch)*0.16;
+    if(Math.abs(target.yaw-yaw)<0.004&&Math.abs(target.pitch-pitch)<0.004){yaw=target.yaw;pitch=target.pitch;target=null;}}
+  else if(!dragging && !selId && !pinned && !viewLock) yaw+=autoYaw;
+  nodes.forEach(n=>n._=project(n));
+  const focus=selId||hoverId; active = pinned ? pinned : (focus?neighborhood(focus):null);
+  ctx.clearRect(0,0,W,H);
+
+  // links (cross-links hidden unless related node is focused -> keeps it clean)
+  for(const l of links){
+    const a=l.source._,b=l.target._;
+    let on=!active||(active.has(l.source.id)&&active.has(l.target.id));
+    if(selId==='hub'&&l.kind==='cross'){const _ch=(l.source.id==='t2'&&l.target.id==='akcan2012')||(l.source.id==='akcan2012'&&l.target.id==='t2');if(!_ch)on=false;}
+    const f=Math.min(fog(a.pp),fog(b.pp));
+    ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);
+    if(active&&on){ctx.strokeStyle=hexA(l.target.color,0.65*f+0.2);ctx.lineWidth=1.6;}
+    else if(active){ctx.strokeStyle=hexA('#9aa0b0',0.025);ctx.lineWidth=1;}
+    else{const hb=(l.kind==='structure')&&((l.source.id==='hub'&&l.target.type==='theme')||(l.target.id==='hub'&&l.source.type==='theme'));
+      if(hb){const tn=l.source.id==='hub'?l.target:l.source;ctx.strokeStyle=hexA(tn.color,0.30*f+0.10);ctx.lineWidth=1.3;}
+      else{const base=l.kind==='cross'?0.05:0.12;ctx.strokeStyle=hexA('#9aa0b0',base*f+0.03);ctx.lineWidth=l.kind==='cross'?0.8:1;}}
+    ctx.stroke();
+  }
+
+  // period layer (same-decade sources) in light purple
+  if(showTime){
+    ctx.save();ctx.shadowColor='rgba(205,120,255,1)';
+    for(const l of tlinks){
+      const a=l.source._,b=l.target._,f=Math.min(fog(a.pp),fog(b.pp));
+      const on=periodHighlight||(selId&&(l.source.id===selId||l.target.id===selId))||(active&&active.has(l.source.id)&&active.has(l.target.id));
+      ctx.shadowBlur=on?5:2;
+      ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);
+      ctx.strokeStyle=hexA('#d28cff',(on?0.62:0.16)*f+(on?0.12:0.06));
+      ctx.lineWidth=on?1.6:0.3; ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // nodes back-to-front
+  const order=[...nodes].sort((p,q)=>p._.z-q._.z);
+  for(const n of order){
+    const p=n._,dim=active&&!active.has(n.id),f=fog(p.pp);
+    const sec=n.secondary&&n.type==='source';
+    const r=Math.max(2,n.r*p.s)*(sec?0.82:1);
+    ctx.globalAlpha=dim?0.18:(sec?0.36:1);
+    // soft glow
+    ctx.beginPath();ctx.arc(p.x,p.y,r*2.1,0,7);ctx.fillStyle=hexA(n.color,(dim?0.04:0.12)*f);ctx.fill();
+    if(n.type==='source'){
+      // small 3D pyramid that rotates with the camera (apex up, shaded faces)
+      const hp=r*0.8;
+      const LV=[[0,-1.2,0],[-1,0.6,-1],[1,0.6,-1],[1,0.6,1],[-1,0.6,1]];
+      const RV=LV.map(v=>rot3([v[0]*hp,v[1]*hp,v[2]*hp]));
+      const SC=RV.map(v=>[p.x+v[0]*p.s,p.y+v[1]*p.s]);
+      const FC=[[0,1,2],[0,2,3],[0,3,4],[0,4,1],[1,2,3,4]];
+      const polys=[];
+      for(const fi of FC){const a=RV[fi[0]],b=RV[fi[1]],c=RV[fi[2]];
+        let nx=(b[1]-a[1])*(c[2]-a[2])-(b[2]-a[2])*(c[1]-a[1]),
+            ny=(b[2]-a[2])*(c[0]-a[0])-(b[0]-a[0])*(c[2]-a[2]),
+            nz=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
+        let cxv=0,cyv=0,czv=0;fi.forEach(i=>{cxv+=RV[i][0];cyv+=RV[i][1];czv+=RV[i][2];});cxv/=fi.length;cyv/=fi.length;czv/=fi.length;
+        if(nx*cxv+ny*cyv+nz*czv<0){nx=-nx;ny=-ny;nz=-nz;}
+        const ln=Math.hypot(nx,ny,nz)||1,t=Math.max(-1,Math.min(1,(nx/ln)*-0.5+(ny/ln)*-0.62+(nz/ln)*-0.6));
+        const fill=t>=0?mix(n.color,Math.min(0.72,0.12+t*0.6),true):mix(n.color,Math.min(0.58,-t*0.55),false);
+        polys.push({pts:fi.map(i=>SC[i]),fill,d:czv});}
+      polys.sort((x,y)=>y.d-x.d);
+      for(const pl of polys){ctx.beginPath();pl.pts.forEach((q,i)=>{i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]);});ctx.closePath();ctx.fillStyle=pl.fill;ctx.fill();ctx.lineWidth=0.4;ctx.strokeStyle='rgba(0,0,0,0.32)';ctx.stroke();}
+      if(selId===n.id){const pl=polys[polys.length-1];ctx.beginPath();pl.pts.forEach((q,i)=>{i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]);});ctx.closePath();ctx.lineWidth=1.6;ctx.strokeStyle='#fff';ctx.stroke();}
+    } else {
+      // 3D sphere
+      const g=ctx.createRadialGradient(p.x-r*0.38,p.y-r*0.42,r*0.1,p.x,p.y,r);
+      g.addColorStop(0,mix(n.color,0.55*f,true));g.addColorStop(0.45,n.color);g.addColorStop(1,mix(n.color,0.55,false));
+      ctx.beginPath();ctx.arc(p.x,p.y,r,0,7);ctx.fillStyle=g;ctx.fill();
+      if(selId===n.id){ctx.lineWidth=2;ctx.strokeStyle='#fff';ctx.stroke();}
+    }
+    ctx.globalAlpha=1;
+    // labels
+    const show = n.type!=='source' || focus===n.id || (active&&active.has(n.id)) || p.s>1.25;
+    if(show && !dim){
+      const fs=(n.type==='hub'?13:n.type==='theme'?12:n.type==='sub'?11:10);
+      ctx.font=`${n.type==='source'?'':'600 '}${fs}px -apple-system,Segoe UI,Arial`;
+      ctx.textAlign='center';ctx.textBaseline='top';
+      ctx.fillStyle=hexA(n.type==='source'?'#f0d6d6':'#fff3f3', Math.min(1,f+0.25));
+      ctx.fillText(n.label,p.x,p.y+r+3);
+    }
+  }
+  renderMini();
+  requestAnimationFrame(draw);
+}
+
+// ---------- hit test ----------
+function nodeAt(mx,my){let best=null,bd=1e9;
+  for(const n of nodes){const p=n._;if(!p)continue;const r=Math.max(6,n.r*p.s)+5;const d=(mx-p.x)**2+(my-p.y)**2;
+    if(d<=r*r && p.z<bd){bd=p.z;best=n;}}
+  return best;}
+
+// ---------- interaction ----------
+let dragging=false,last={x:0,y:0},moved=false;
+cv.addEventListener('mousedown',e=>{dragging=true;moved=false;viewLock=false;target=null;last={x:e.clientX,y:e.clientY};cv.classList.add('grab');});
+addEventListener('mousemove',e=>{
+  if(dragging){const dx=e.clientX-last.x,dy=e.clientY-last.y;if(Math.abs(dx)+Math.abs(dy)>3)moved=true;
+    yaw+=dx*0.006; pitch=Math.max(-1.3,Math.min(1.3,pitch+dy*0.006)); last={x:e.clientX,y:e.clientY};}
+  else{const n=nodeAt(e.clientX,e.clientY);hoverId=n?n.id:null;cv.style.cursor=n?'pointer':'grab';}
+});
+addEventListener('mouseup',e=>{
+  if(dragging&&!moved){const n=nodeAt(e.clientX,e.clientY); if(n)select(n.id); else {selId=null;pinned=null;hidePanel();aHide();}}
+  dragging=false;cv.classList.remove('grab');
+});
+cv.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(0.4,Math.min(3.2,zoom*(e.deltaY<0?1.12:1/1.12)));},{passive:false});
+// ---- touch (mobile): 1 finger = orbit, 2 fingers = pinch zoom, tap = select ----
+function dist2(ts){return Math.hypot(ts[0].clientX-ts[1].clientX,ts[0].clientY-ts[1].clientY);}
+let pinchD=0;
+cv.addEventListener('touchstart',e=>{if(e.touches.length===1){dragging=true;moved=false;viewLock=false;target=null;last={x:e.touches[0].clientX,y:e.touches[0].clientY};}else if(e.touches.length===2){dragging=false;pinchD=dist2(e.touches);}},{passive:false});
+cv.addEventListener('touchmove',e=>{
+  if(e.touches.length>=2){const d=dist2(e.touches);if(pinchD)zoom=Math.max(0.4,Math.min(3.2,zoom*(d/pinchD)));pinchD=d;e.preventDefault();}
+  else if(e.touches.length===1&&dragging){const t=e.touches[0],dx=t.clientX-last.x,dy=t.clientY-last.y;if(Math.abs(dx)+Math.abs(dy)>3)moved=true;yaw+=dx*0.006;pitch=Math.max(-1.3,Math.min(1.3,pitch+dy*0.006));last={x:t.clientX,y:t.clientY};e.preventDefault();}
+},{passive:false});
+cv.addEventListener('touchend',e=>{if(dragging&&!moved&&e.changedTouches.length){const t=e.changedTouches[0],n=nodeAt(t.clientX,t.clientY);if(n)select(n.id);else{selId=null;pinned=null;hidePanel();aHide();}}if(e.touches.length===0){dragging=false;pinchD=0;}},{passive:false});
+
+// ---------- panel ----------
+const panel=document.getElementById('panel');
+function hidePanel(){panel.classList.remove('show');}
+document.getElementById('close').onclick=()=>{selId=null;hidePanel();};
+function escapeHtml(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function chipMark(c){return c.type==='source'
+ ?'<span style="display:inline-block;width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:7px solid '+c.color+';margin-right:6px;vertical-align:middle"></span>'
+ :'<span class="lc" style="background:'+c.color+'"></span>';}
+function select(id){selId=id;pinned=null;periodHighlight=false;clearDecadeBand();const n=byId[id];
+  const tag=document.getElementById('p-tag'),title=document.getElementById('p-title'),body=document.getElementById('p-body'),
+        lh=document.getElementById('p-links-h'),lw=document.getElementById('p-links'),wrap=document.getElementById('p-links-wrap');
+  const isSec=n.type==='source'&&n.secondary;
+  tag.textContent = isSec ? 'Secondary source' : {hub:'Center',theme:'Theme',sub:'Section',source:'Source'}[n.type];
+  tag.style.background=hexA(n.color,isSec?0.16:0.25);tag.style.color=isSec?mix(n.color,0.4,true):n.color;
+  title.textContent=n.title||n.label;
+  body.innerHTML = n.type==='source' ? '<div class="cite">'+escapeHtml(n.cite)+'</div>' : '<div class="desc">'+escapeHtml(n.desc||'')+'</div>'+(n.note?'<div class="desc" style="margin-top:8px;font-size:11px;color:#9aa">'+escapeHtml(n.note)+'</div>':'');
+  lh.textContent = n.type==='source'?'Related themes & sources':'Connected nodes';
+  const ids=[...adj[id]],order={hub:0,theme:1,sub:2,source:3};
+  ids.sort((a,b)=>order[byId[a].type]-order[byId[b].type]||byId[a].label.localeCompare(byId[b].label));
+  lw.innerHTML='';
+  ids.forEach(cid=>{const c=byId[cid];const a=document.createElement('a');
+    a.innerHTML=chipMark(c)+escapeHtml(c.label);a.onclick=()=>select(cid);lw.appendChild(a);});
+  wrap.style.display=ids.length?'block':'none';panel.classList.add('show');
+}
+// ===== in-page Reader Assistant (offline, grounded in the reader's own text & structure) =====
+const aPanel=document.getElementById('assistant'),aQ=document.getElementById('a-q'),
+      aAns=document.getElementById('a-ans'),aChips=document.getElementById('a-chips');
+document.getElementById('a-close').onclick=aHide;
+function aHide(){aPanel.classList.remove('show');pinned=null;periodHighlight=false;clearDecadeBand();}
+
+const TKEYS={
+ t1:['t1','autonomy','otonomi','özerklik','ozerklik','disciplinary','disipliner','disiplin'],
+ t2:['t2','postcolonial','postkolonyal','sömürge','somurge','colonial','subaltern','global south','global city','worlding','assemblage'],
+ t3:['t3','planetary','gezegen','gezegensel','urbanization','urbanisation','exteriority','without an outside']
+};
+const TNAME={t1:'Theme 1 — Autonomy',t2:'Theme 2 — Postcolonial Critique',t3:'Theme 3 — Planetary Urbanization'};
+const REL={
+ 't1|t2':"Theme 2 situates the autonomy that Theme 1 produces. In the essay's argument the architectural use of 'autonomy' is not a neutral term but a category produced inside a specific institutional and theoretical apparatus, the lineage Goldhagen traces through Tafuri and Adorno and that Hays formulates as 'critical distance'. Read through Said, Spivak, Bhabha, Fanon and Chakrabarty, that apparatus is a constitutive condition rather than an external context: the categories presented as universal are products of particular historical and geographical positions. Transposed into architecture by Akcan (translation) and Bozdogan, and by Cruz Garcia and Frankowski in practice, autonomy is shown to carry the same universalising assumption the postcolonial critique already exposed at the level of style and modernism. Hays's formulation is what makes autonomy 'locatable', and therefore available to this interrogation.",
+ 't2|t3':"The postcolonial and planetary frames do not begin as compatible: the essay is explicit that Brenner was criticised for flattening the geographical and historical specificity of cities. Planetary urbanization (Brenner and Schmid, Implosions/Explosions) removes the urban's constitutive outside, so the urban becomes a process with no exteriority; the postcolonial critique insists instead that categories stay situated. Brenner's reply, reformulated as 'engaged pluralism', resets the relation so the two frames operate together rather than against one another. Schmid's decentring and Goonewardena's totality reading mark the contested terrain, while Sassen (the systemic edge), McFarlane (assemblage) and Chakrabarty (the planetary horizon) supply the bridges. For autonomy the consequence is a doubled interrogation: it must account for both its location and its outside.",
+ 't1|t3':"Planetary urbanization performs a different operation on the autonomy of Theme 1. Disciplinary autonomy, in the line from Tafuri to Aureli, depended on a recognisable outside against which to keep critical distance; Brenner's 'urban theory without an outside' removes exactly that. Autonomy is thereby reframed not as withdrawal but as a question of situatedness, the architect's position within an urban condition that has no exterior, read alongside Harvey, Koolhaas's Junkspace, Soja and Sassen. Aureli's 'within and against capitalism' already pointed this way; under the planetary thesis any claim to an autonomous position becomes hard to distinguish from the condition it sought to hold at a distance."
+};
+const BRIDGE={'t1|t2':['hays1984','goldhagen2005','akcan2014'],'t2|t3':['brenner2018','sassen2016','mcfarlane2011','chakrabarty2000'],'t1|t3':['aureli2008','brenner2018','koolhaas2002']};
+const SYN={'tema':'theme','kaynak':'source','yazar':'author','ilişki':'relation','ilişkisi':'relation','ilişkilendir':'relation','ilişkilen':'relation','arasında':'between','arasındaki':'between','nasıl':'how','nedir':'what','neden':'why','özet':'summary','özetle':'summary','hakkında':'about'};
+function qnorm(q){return q.toLowerCase();}
+function tokens(q){return qnorm(q).split(/[^a-zçğıöşü0-9]+/).filter(Boolean).map(t=>SYN[t]||t);}
+function pairKey(a,b){return [a,b].sort().join('|');}
+function detectThemes(q){const raw=qnorm(q),set=new Set();
+  for(const tid of ['t1','t2','t3'])for(const k of TKEYS[tid])if(raw.includes(k)){set.add(tid);break;}
+  const m=raw.match(/(?:theme|tema|t)\s*([123])/g); if(m)m.forEach(x=>{const n=x.match(/[123]/);if(n)set.add('t'+n[0]);});
+  return [...set];}
+function bestSourceMatch(q){const raw=qnorm(q);let best=null,bs=0;
+  for(const n of nodes){if(n.type!=='source'&&n.type!=='sub')continue;let sc=0;
+    (n.label||'').toLowerCase().split(/[^a-zçğıöşü0-9]+/).forEach(w=>{if(w.length>3&&raw.includes(w))sc+=w.length;});
+    if(sc>bs){bs=sc;best=n;}}
+  return bs>=4?best:null;}
+function keywordTop(q,k){const ts=tokens(q).filter(t=>t.length>2);
+  const sc=nodes.map(n=>{const hay=((n.title||'')+' '+(n.desc||'')+' '+(n.label||'')+' '+(n.cite||'')).toLowerCase();
+    let s=0;ts.forEach(t=>{if(hay.includes(t))s++;});return{n,s};}).filter(x=>x.s>0).sort((a,b)=>b.s-a.s);
+  return sc.slice(0,k).map(x=>x.n);}
+const TG={t1:'T1 Autonomy',t2:'T2 Postcolonial Critique',t3:'T3 Planetary Urbanization',core:'Center Synthesis - Intro / Conclusion'};
+function srcRow(n){return '<div style="display:flex;align-items:center;gap:7px;margin:4px 0;font-size:12px">'
+  +'<span style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:9px solid '+n.color+';flex:none"></span>'
+  +'<span style="flex:1">'+escapeHtml(n.label)+'</span>'
+  +'<span style="font-size:10px;color:'+n.color+';white-space:nowrap">'+TG[n.group]+'</span></div>';}
+function themeAnswer(tid){const t=byId[tid],ss=nodes.filter(n=>n.type==='sub'&&n.theme===tid),
+   srcs=nodes.filter(n=>n.type==='source'&&ss.some(s=>s.id===n.parent));
+  const others=['t1','t2','t3'].filter(x=>x!==tid);
+  let html='<div style="font-size:12.5px;line-height:1.5;color:#e7e7ea">'+escapeHtml(t.desc)+'</div>';
+  html+='<div style="font-size:11px;color:#9aa;margin:10px 0 2px">Sections</div>'+ss.map(s=>'<div style="font-size:12px;color:'+s.color+';margin:2px 0">'+escapeHtml(s.title)+'</div>').join('');
+  html+='<div style="font-size:11px;color:#9aa;margin:10px 0 2px">Sources</div>'+srcs.map(srcRow).join('');
+  html+='<div style="font-size:11px;color:#9aa;margin:10px 0 2px">Relation to the other themes</div>'
+    +others.map(o=>'<div style="font-size:12px;margin:3px 0"><b style="color:'+byId[o].color+'">'+TG[o]+':</b> '+escapeHtml(REL[pairKey(tid,o)].split('. ')[0])+'.</div>').join('');
+  return {title:t.title,html:html,ids:new Set([tid,...ss.map(s=>s.id),...srcs.map(s=>s.id)])};}
+function relationAnswer(a,b){const k=pairKey(a,b);
+  const html='<div style="font-size:12.5px;line-height:1.55;color:#e7e7ea">'+escapeHtml(REL[k])+'</div>';
+  return {title:TNAME[a]+"  ↔  "+TNAME[b],html:html,ids:new Set([a,b,...(BRIDGE[k]||[])])};}
+function coreAnswer(){
+  const ids=new Set(['hub','t1','t2','t3','goldhagen2005','tafuri1976','aureli2008','hays1984','said1978','chakrabarty2000','brenner2018','akcan2012','avermaete_sabatino2025','chakrabarty2009']);
+  const P=[
+   "The reader keeps one term steady, 'autonomy', and tracks what happens to it under three successive pressures.",
+   "<b style='color:"+COL.t1+"'>Theme 1 produces it</b> as a disciplinary category: Tafuri reads architecture as caught within and against capitalist development, Aureli recovers autonomy as a politically formed practice, and Goldhagen (with Hays) fixes it as a socio-critical 'critical distance' descended from Tafuri and Adorno, distinct from the art-historical autonomy of Wolfflin and Focillon.",
+   "<b style='color:"+COL.t2+"'>Theme 2 situates it</b>: read through Said, Spivak, Bhabha, Fanon and Chakrabarty, and transposed into architecture by Akcan and Bozdogan (with Garcia and Frankowski as practice), autonomy is shown to carry the same universalising assumption the postcolonial critique exposes; the urban counterpart (Sassen's Global City, the Global South critique of Robinson, Roy, Myers and Bhan, and worlding-assemblage methods) widens this.",
+   "<b style='color:"+COL.t3+"'>Theme 3 removes its outside</b>: Brenner and Schmid's planetary urbanization leaves no exterior against which disciplinary autonomy could be sustained, and Brenner's 'engaged pluralism' makes the postcolonial and planetary frames speak with rather than against one another.",
+   "<b>The proposition</b> (essay conclusion): retain 'autonomy' but redescribe it 'as a discourse' (Goldhagen's analogue) - a situated category (Akcan's translation, Avermaete and Sabatino's global turn) that the planetary horizon (Chakrabarty) renders inseparable from the material geographies in which architecture is practised. Hence the title: autonomy with and without its outside."
+  ];
+  return {title:"The reader's core argument - autonomy across the three themes",html:P.map(p=>'<div style="font-size:12.5px;line-height:1.55;color:#e7e7ea;margin:7px 0">'+p+'</div>').join(''),ids:ids};}
+function sourceAnswer(n){
+  const surn=(n.label||'').toLowerCase().split(/[^a-zçğıöşü]+/).filter(w=>w.length>3);
+  const works=nodes.filter(m=>m.type==='source'&&surn.some(s=>(m.label||'').toLowerCase().includes(s)));
+  const ids=new Set();works.forEach(m=>{ids.add(m.id);adj[m.id].forEach(x=>ids.add(x));});
+  let html='<div style="font-size:11px;color:#9aa;margin-bottom:2px">'+(works.length>1?'All works by this author in the reader':'This source')+', with their theme</div>'+works.map(srcRow).join('');
+  const rel=[...ids].map(id=>byId[id]).filter(m=>m.type==='source'&&works.indexOf(m)<0);
+  if(rel.length)html+='<div style="font-size:11px;color:#9aa;margin:10px 0 2px">Related sources, now frozen on screen</div>'+rel.map(srcRow).join('');
+  const sec=[...ids].map(id=>byId[id]).filter(m=>m.type==='sub'||m.type==='theme');
+  if(sec.length)html+='<div style="font-size:11px;color:#9aa;margin:10px 0 2px">Sections / themes</div>'+sec.map(s=>'<div style="font-size:12px;color:'+s.color+';margin:2px 0">'+escapeHtml(s.title||s.label)+'</div>').join('');
+  const title=(works.length>1?works[0].label.replace(/\s*\d.*$/,''):n.label)+" - pinned";
+  return {title:title,html:html,ids:ids};}
+function readerAnswer(){return {title:"About this reader",text:byId.hub.desc,ids:new Set(['hub','t1','t2','t3'])};}
+function periodAnswer(dec){const srcs=nodes.filter(n=>{const y=nodeYear(n);return n.type==='source'&&y!=null&&Math.floor(y/10)*10===dec;});
+  if(!srcs.length)return {title:dec+"s",text:"No sources from the "+dec+"s in this reader.",ids:new Set()};
+  srcs.sort((a,b)=>(a.group<b.group?-1:a.group>b.group?1:0));
+  const html='<div style="font-size:11.5px;color:#aab;margin-bottom:6px">'+srcs.length+" sources written in the "+dec+"s, with the theme each one sits under:</div>"+srcs.map(srcRow).join('');
+  return {title:dec+"s - same-period sources",html:html,ids:new Set(srcs.map(s=>s.id))};}
+function localAnswer(q){const themesIn=detectThemes(q),raw=qnorm(q);clearDecadeBand();periodHighlight=false;
+  const mm=raw.match(/\b((?:19|20)\d)0s\b/)||raw.match(/\b((?:19|20)\d)0\s*['’]?l[ae]r/);
+  if(mm&&themesIn.length===0){const d=+(mm[1]+'0');showAnswer(q,periodAnswer(d));selectDecadeBand(d);return;}
+  if(/(three|all)\s*theme|üç tema|tüm tema|temalar aras|relationship between|between the theme|themes? relat|connections? between|core argument|main argument|central argument|temel önerme|ana argüman|genel argüman|with and without|overall argument/.test(raw)&&themesIn.length<2){showAnswer(q,coreAnswer());return;}
+  if(themesIn.length>=2){showAnswer(q,relationAnswer(themesIn[0],themesIn[1]));return;}
+  const sm=bestSourceMatch(q);
+  const yy=raw.match(/\b(?:19|20)\d{2}\b/);
+  if(yy&&!sm&&themesIn.length===0){const d=Math.floor(+yy[0]/10)*10;showAnswer(q,periodAnswer(d));selectDecadeBand(d);return;}
+  if(/this reader|bu reader|genel bak|summary|özet|hakkında ne|what is this|ne hakkında/.test(raw)&&themesIn.length===0&&!sm){showAnswer(q,readerAnswer());return;}
+  if(sm&&themesIn.length===0){showAnswer(q,sourceAnswer(sm));return;}
+  if(themesIn.length===1){showAnswer(q,themeAnswer(themesIn[0]));return;}
+  if(sm){showAnswer(q,sourceAnswer(sm));return;}
+  const top=keywordTop(q,3);
+  if(top.length){showAnswer(q,{title:"Closest matches in the reader",text:top.map(n=>"• "+(n.title||n.label)+" — "+((n.desc||n.cite||'').split('. ')[0])+'.').join("\n\n"),ids:new Set(top.map(n=>n.id))});return;}
+  showAnswer(q,{title:"Try another question",text:"Ask about a theme, how two themes relate, the reader's core argument, a decade like 1990s, or an author such as Brenner, Sassen or Akcan. Questions in Turkish are fine.",ids:new Set()});}
+function showAnswer(q,res){
+  aQ.innerHTML='<b>'+escapeHtml(q)+'</b>';
+  const head='<strong style="color:#fff">'+escapeHtml(res.title)+'</strong>';
+  aAns.innerHTML = res.html ? (head+'<div style="height:8px"></div>'+res.html) : (head+'\n\n'+escapeHtml(res.text||''));
+  aChips.innerHTML='';
+  const ids=res.ids||new Set();
+  [...ids].map(id=>byId[id]).filter(Boolean).slice(0,14).forEach(c=>{const el=document.createElement('span');el.className='chip';
+    el.innerHTML=chipMark(c)+escapeHtml(c.label||c.title);el.onclick=()=>select(c.id);aChips.appendChild(el);});
+  aPanel.classList.add('show'); selId=null; hidePanel(); pinned=ids.size?ids:null;}
+function showSuggest(){const sug=["What is the reader's core argument?","How do autonomy and planetary urbanization relate?","How does postcolonial critique situate autonomy?","What is Theme 3 about?","Which sources are from the 2000s?","Where does Sassen appear?","What does Brenner's engaged pluralism do?","How is Akcan's translation used here?"];
+  aQ.textContent='Ask about the reader, e.g.:';aAns.textContent='';aChips.innerHTML='';
+  sug.forEach(s=>{const el=document.createElement('span');el.className='chip';el.textContent=s;el.onclick=()=>{search.value=s;askAgent(s);};aChips.appendChild(el);});
+  aPanel.classList.add('show');}
+// ---- Claude integration: in-page answers when running inside the Cowork app ----
+const READER_CTX=(function(){let s="READER: "+byId.hub.title+"\n\nOVERVIEW:\n"+byId.hub.desc+"\n";
+  ['t1','t2','t3'].forEach(tid=>{const t=byId[tid];s+="\n=== "+t.title+" ===\n"+t.desc+"\n";
+    nodes.filter(n=>n.type==='sub'&&n.theme===tid).forEach(sub=>{s+="\n• "+sub.title+"\n"+sub.desc+"\nSources:\n";
+      nodes.filter(n=>n.type==='source'&&n.parent===sub.id).forEach(src=>{s+="   - "+src.cite+"\n";});});});
+  s+="\n=== Introduction / Conclusion sources ===\n";
+  nodes.filter(n=>n.type==='source'&&n.parent==='hub').forEach(src=>{s+="   - "+src.cite+"\n";});
+  return s;})();
+function guessIds(q){const t=detectThemes(q),ids=new Set();
+  if(t.length>=2){ids.add(t[0]);ids.add(t[1]);(BRIDGE[pairKey(t[0],t[1])]||[]).forEach(x=>ids.add(x));}
+  else if(t.length===1){ids.add(t[0]);nodes.filter(n=>n.type==='sub'&&n.theme===t[0]).forEach(s=>ids.add(s.id));}
+  const sm=bestSourceMatch(q); if(sm){ids.add(sm.id);adj[sm.id].forEach(x=>ids.add(x));}
+  keywordTop(q,4).forEach(n=>ids.add(n.id));
+  return ids;}
+function renderChips(ids){aChips.innerHTML='';[...ids].map(id=>byId[id]).filter(Boolean).slice(0,12).forEach(c=>{const el=document.createElement('span');el.className='chip';el.innerHTML=chipMark(c)+escapeHtml(c.label||c.title);el.onclick=()=>select(c.id);aChips.appendChild(el);});}
+function showThinking(q){aQ.innerHTML='<b>'+escapeHtml(q)+'</b>';aAns.innerHTML='<span style="color:#9aa">Claude is reading the reader…</span>';aChips.innerHTML='';aPanel.classList.add('show');}
+function showAI(q,text,ids){aQ.innerHTML='<b>'+escapeHtml(q)+'</b>';
+  aAns.innerHTML='<strong style="color:#fff">Claude</strong>  <span style="font-size:10px;color:#9aa">grounded in this reader</span>\n\n'+escapeHtml(text);
+  renderChips(ids);aPanel.classList.add('show');pinned=ids.size?ids:null;selId=null;hidePanel();}
+function readerPrompt(q){return "You are an academic assistant embedded in a graduate course reader titled \""+byId.hub.title+"\". "
+  +"Answer the user's question USING ONLY the reader's themes, sections and sources given below. "
+  +"Tie your answer to specific sources by author and year, and explain how the relevant themes connect. "
+  +"Do not invent sources that are not in the list. Be concise and scholarly, about 120-180 words.\n\n"
+  +"=== READER CONTENT ===\n"+READER_CTX+"\n=== QUESTION ===\n"+q;}
+function askAgent(q){ localAnswer(q); }
+const search=document.getElementById('search');
+search.addEventListener('keydown',e=>{if(e.key==='Enter'){const q=search.value.trim();if(q)askAgent(q);}});
+search.addEventListener('focus',showSuggest);
+search.addEventListener('click',showSuggest);
+document.getElementById('reset').onclick=()=>{yaw=0.6;pitch=-0.32;zoom=1;selId=null;pinned=null;hidePanel();aHide();search.value='';};
+const periodBtn=document.getElementById('period');
+function updPeriod(){periodBtn.textContent='Period: '+(showTime?'on':'off');periodBtn.style.color=showTime?'#c6a0ff':'';periodBtn.style.borderColor=showTime?'#6b4a8a':'';}
+periodBtn.onclick=()=>{showTime=!showTime;updPeriod();}; updPeriod();
+// ---- legend interactivity: click a row to highlight that cluster (or the period layer) ----
+function legendSelect(k){
+  clearDecadeBand();periodHighlight=false;selId=null;
+  if(k==='period'){periodHighlight=true;pinned=null;hidePanel();
+    showAnswer('10 yearly period',{title:'10 yearly period',html:'<div style="font-size:12.5px;line-height:1.55;color:#e7e7ea">These light-purple lines connect sources written within the same 10-year period.</div>',ids:new Set()});
+    return;}
+  if(k==='core'){const ids=new Set(['hub']);nodes.forEach(n=>{if(n.group==='core')ids.add(n.id);});
+    showAnswer('Center synthesis',{title:'Center - Intro / Conclusion',html:'<div style="font-size:12.5px;line-height:1.55;color:#e7e7ea">'+escapeHtml(byId.hub.desc)+'</div>',ids});return;}
+  if(k==='t1'||k==='t2'||k==='t3'){const ids=new Set();ids.add(k);
+    nodes.forEach(n=>{if(n.group===k)ids.add(n.id);});
+    nodes.filter(n=>n.type==='sub'&&n.theme===k).forEach(s=>ids.add(s.id));
+    const t=byId[k];
+    showAnswer(t.label,{title:t.title,html:'<div style="font-size:12.5px;line-height:1.55;color:#e7e7ea">'+escapeHtml(t.desc)+'</div>',ids});return;}
+}
+document.querySelectorAll('#legend .row[data-leg]').forEach(r=>r.addEventListener('click',()=>legendSelect(r.getAttribute('data-leg'))));
+
+// ---- timeline (left of the cube): decade columns of theme-coloured nodes on a purple axis ----
+const BOUNDS=[1960,1970,1980,1990,2000,2010,2020,2026];
+function periodSelect(dec){search.value=dec+'s';showAnswer(dec+'s',periodAnswer(dec));selectDecadeBand(dec);viewLock=true;}
+function selectDecadeBand(dec){const el=document.getElementById('timeline');if(!el)return;el.querySelectorAll('.bandg').forEach(g=>g.classList.toggle('sel',+g.getAttribute('data-d')===dec));}
+function clearDecadeBand(){const el=document.getElementById('timeline');if(!el)return;el.querySelectorAll('.bandg').forEach(g=>g.classList.remove('sel'));}
+function buildTimeline(){
+  const leftPad=12,bw=40,lastW=20,Ht=88,base=Ht-15,nb=BOUNDS.length-1;
+  const BW=[];for(let i=0;i<nb;i++)BW.push(i===nb-1?lastW:bw);
+  const X=[leftPad];for(let i=0;i<nb;i++)X.push(X[i]+BW[i]);
+  const Wt=X[nb]+leftPad;
+  const byd={}; for(let i=0;i<nb;i++) byd[BOUNDS[i]]=[];
+  nodes.forEach(n=>{if(n.type!=='source')return;const y=nodeYear(n);if(y==null)return;const d=Math.floor(y/10)*10;if(byd[d])byd[d].push(n);});
+  let defs='<defs>';['core','t1','t2','t3'].forEach(g=>{const c=COL[g];
+    defs+='<linearGradient id="tlpy_'+g+'" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="'+mix(c,0.6,true)+'"/><stop offset="55%" stop-color="'+c+'"/><stop offset="100%" stop-color="'+mix(c,0.5,false)+'"/></linearGradient>';});
+  defs+='</defs>';
+  let s='<svg width="'+Wt+'" height="'+Ht+'" viewBox="0 0 '+Wt+' '+Ht+'">'+defs;
+  s+='<line x1="'+leftPad+'" y1="'+base+'" x2="'+(Wt-leftPad)+'" y2="'+base+'" stroke="#c6a0ff" stroke-width="1.2"/>';
+  const rDot=1.8,sx=rDot*2+1.1,sy=rDot*2+0.6,pw=rDot*1.15,ph=rDot*2.0,hlY=39,hlH=40;
+  for(let i=0;i<=nb;i++){const xb=X[i];
+    s+='<line x1="'+xb+'" y1="'+(base-3)+'" x2="'+xb+'" y2="'+(base+4)+'" stroke="#c6a0ff" stroke-width="1"/>';
+    s+='<text x="'+xb+'" y="'+(Ht-3)+'" text-anchor="middle" fill="#9aa0aa" font-size="7.5" font-family="Arial">'+BOUNDS[i]+'</text>';}
+  for(let i=0;i<nb;i++){const x0=X[i],bwi=BW[i],xc=x0+bwi/2,dec=BOUNDS[i],arr=byd[dec]||[];
+    const rowMax=Math.max(2,Math.min(5,Math.round(Math.sqrt(arr.length*1.3))||2));
+    s+='<g class="bandg" data-d="'+dec+'">';
+    s+='<rect class="hl" x="'+x0+'" y="'+hlY+'" width="'+bwi+'" height="'+hlH+'" fill="#c6a0ff"/>';
+    arr.forEach((n,k)=>{const row=Math.floor(k/rowMax),col=k%rowMax;
+      const jx=Math.sin(k*12.9898)*1.4,jy=Math.cos(k*4.1)*1.0;
+      const x=xc+(col-(rowMax-1)/2)*sx+jx,by=base-2-row*sy+jy;
+      s+='<polygon points="'+x.toFixed(1)+','+(by-ph).toFixed(1)+' '+(x-pw).toFixed(1)+','+by.toFixed(1)+' '+(x+pw).toFixed(1)+','+by.toFixed(1)+'" fill="url(#tlpy_'+n.group+')"/>';});
+    s+='<rect class="hit" x="'+x0+'" y="0" width="'+bwi+'" height="'+(Ht-9)+'" fill="transparent"></rect>';
+    s+='</g>';}
+  s+='</svg>';
+  const el=document.getElementById('timeline');el.innerHTML=s;
+  el.querySelectorAll('.bandg').forEach(g=>g.addEventListener('click',()=>periodSelect(+g.getAttribute('data-d'))));
+}
+buildTimeline();
+
+draw();
+</script>
+</body></html>
