@@ -241,10 +241,10 @@ function draw(){
     for(const l of tlinks){
       const a=l.source._,b=l.target._,f=Math.min(fog(a.pp),fog(b.pp));
       const on=periodHighlight||(selId&&(l.source.id===selId||l.target.id===selId))||(active&&active.has(l.source.id)&&active.has(l.target.id));
-      ctx.shadowBlur=on?5:2;
+      ctx.shadowBlur=on?5:0;
       ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);
-      ctx.strokeStyle=hexA('#d28cff',(on?0.62:0.16)*f+(on?0.12:0.06));
-      ctx.lineWidth=on?1.6:0.3; ctx.stroke();
+      ctx.strokeStyle=hexA('#d28cff',(on?0.62:0.08)*f+(on?0.12:0.025));
+      ctx.lineWidth=on?1.6:0.18; ctx.stroke();
     }
     ctx.restore();
   }
@@ -337,6 +337,19 @@ function escapeHtml(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')
 function chipMark(c){return c.type==='source'
  ?'<span style="display:inline-block;width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:7px solid '+c.color+';margin-right:6px;vertical-align:middle"></span>'
  :'<span class="lc" style="background:'+c.color+'"></span>';}
+function fillDetailPanel(n){const tag=document.getElementById('p-tag'),title=document.getElementById('p-title'),body=document.getElementById('p-body'),
+  lh=document.getElementById('p-links-h'),lw=document.getElementById('p-links'),wrap=document.getElementById('p-links-wrap');
+  const isSec=n.type==='source'&&n.secondary;
+  tag.textContent=isSec?'Secondary source':{hub:'Center',theme:'Theme',sub:'Section',source:'Source'}[n.type];
+  tag.style.background=hexA(n.color,isSec?0.16:0.25);tag.style.color=isSec?mix(n.color,0.4,true):n.color;
+  title.textContent=n.title||n.label;
+  body.innerHTML=n.type==='source'?'<div class="cite">'+escapeHtml(n.cite)+'</div>':'<div class="desc">'+escapeHtml(n.desc||'')+'</div>'+(n.note?'<div class="desc" style="margin-top:8px;font-size:11px;color:#9aa">'+escapeHtml(n.note)+'</div>':'');
+  lh.textContent=n.type==='source'?'Related themes & sources':'Connected nodes';
+  const ids=[...adj[n.id]],order={hub:0,theme:1,sub:2,source:3};
+  ids.sort((a,b)=>order[byId[a].type]-order[byId[b].type]||byId[a].label.localeCompare(byId[b].label));
+  lw.innerHTML='';
+  ids.forEach(cid=>{const c=byId[cid];const a=document.createElement('a');a.innerHTML=chipMark(c)+escapeHtml(c.label);a.onclick=()=>select(cid);lw.appendChild(a);});
+  wrap.style.display=ids.length?'block':'none';panel.classList.add('show');}
 function select(id){selId=id;pinned=null;periodHighlight=false;clearDecadeBand();const n=byId[id];
   const tag=document.getElementById('p-tag'),title=document.getElementById('p-title'),body=document.getElementById('p-body'),
         lh=document.getElementById('p-links-h'),lw=document.getElementById('p-links'),wrap=document.getElementById('p-links-wrap');
@@ -500,12 +513,14 @@ function legendSelect(k){
     showAnswer('10 yearly period',{title:'10 yearly period',html:'<div style="font-size:12.5px;line-height:1.55;color:#e7e7ea">These light-purple lines connect sources written within the same 10-year period.</div>',ids:new Set()});
     return;}
   if(k==='core'){const ids=new Set(['hub']);nodes.forEach(n=>{if(n.group==='core')ids.add(n.id);});
-    showAnswer('Center synthesis',{title:'Center - Intro / Conclusion',html:'<div style="font-size:12.5px;line-height:1.55;color:#e7e7ea">'+escapeHtml(byId.hub.desc)+'</div>',ids});return;}
+    showAnswer('Center synthesis',{title:'Center - Intro / Conclusion',html:'<div style="font-size:12.5px;line-height:1.55;color:#e7e7ea">'+escapeHtml(byId.hub.desc)+'</div>',ids});
+    fillDetailPanel(byId.hub);return;}
   if(k==='t1'||k==='t2'||k==='t3'){const ids=new Set();ids.add(k);
     nodes.forEach(n=>{if(n.group===k)ids.add(n.id);});
     nodes.filter(n=>n.type==='sub'&&n.theme===k).forEach(s=>ids.add(s.id));
     const t=byId[k];
-    showAnswer(t.label,{title:t.title,html:'<div style="font-size:12.5px;line-height:1.55;color:#e7e7ea">'+escapeHtml(t.desc)+'</div>',ids});return;}
+    showAnswer(t.label,{title:t.title,html:'<div style="font-size:12.5px;line-height:1.55;color:#e7e7ea">'+escapeHtml(t.desc)+'</div>',ids});
+    fillDetailPanel(t);return;}
 }
 document.querySelectorAll('#legend .row[data-leg]').forEach(r=>r.addEventListener('click',()=>legendSelect(r.getAttribute('data-leg'))));
 
